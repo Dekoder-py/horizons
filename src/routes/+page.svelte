@@ -26,6 +26,7 @@
     let btnPressed = $state(false);
     let usingKeyboard = $state(true); // Track if user is using keyboard navigation
     let showSlideOut = $state(false);
+    let disableAnimations = $state(false);
 
     function activateJoinNow() {
         showSlideOut = true;
@@ -45,7 +46,7 @@
     }
 
     function animateLogoIn(node: HTMLElement) {
-        if (!logoRect) return { duration: 0 };
+        if (!logoRect || disableAnimations) return { duration: 0 };
         const to = node.getBoundingClientRect();
         const dx = logoRect.left - to.left;
         const dy = logoRect.top - to.top;
@@ -62,7 +63,7 @@
     }
 
     function animateStripesIn(node: HTMLElement) {
-        if (!stripesRect) return { duration: 0 };
+        if (!stripesRect || disableAnimations) return { duration: 0 };
         const to = node.getBoundingClientRect();
         const dx = stripesRect.left - to.left;
         const dy = stripesRect.top - to.top;
@@ -77,6 +78,8 @@
             }
         };
     }
+
+    const transitionDuration = $derived(disableAnimations ? 0 : undefined);
 
     function showDetail() {
         transitioning = true;
@@ -231,12 +234,14 @@
     });
 </script>
 
-<CircleIn />
-{#if showSlideOut}
-    <CircleOut />
+{#if !disableAnimations}
+    <CircleIn />
+    {#if showSlideOut}
+        <CircleOut />
+    {/if}
 {/if}
 
-<BG class="flex flex-col overflow-hidden">
+<BG class="flex flex-col overflow-hidden" {disableAnimations}>
     {#if !activated}
         <div class="flex-1 flex flex-col justify-center absolute inset-0">
             <div class="flex flex-col items-center justify-center px-16 pb-4">
@@ -246,18 +251,18 @@
             </div>
 
             <div out:captureStripesRect>
-                <Stripes outro={stripesOutro} />
+                <Stripes outro={stripesOutro} {disableAnimations} />
             </div>
 
             {#if !stripesOutro}
-                <div class="flex flex-col items-center justify-center px-16 mt-8" out:fade={{ duration: 300, delay: 100 }}>
-                    <BobaButton text="> PRESS  ENTER" fallbackWidth={260} {pressed} className="pointer-events-none select-none" wave />
+                <div class="flex flex-col items-center justify-center px-16 mt-8" out:fade={{ duration: disableAnimations ? 0 : 300, delay: disableAnimations ? 0 : 100 }}>
+                    <BobaButton text="> PRESS  ENTER" fallbackWidth={260} {pressed} className="pointer-events-none select-none" wave {disableAnimations} />
                 </div>
             {/if}
         </div>
 
         <label class="disable-anim-checkbox">
-            <input type="checkbox" />
+            <input type="checkbox" bind:checked={disableAnimations} />
             Disable animations
         </label>
     {/if}
@@ -268,43 +273,46 @@
                     <div in:animateLogoIn>
                         <img src={Logo} alt="Hack Club Horizon" class="h-24" />
                     </div>
-                    <p in:fade={{ duration: 300, delay: 200 }} class="tagline">HACK CLUB'S <span class="underline">BIGGEST</span> EVENT</p>
+                    <p in:fade={{ duration: disableAnimations ? 0 : 300, delay: disableAnimations ? 0 : 200 }} class="tagline">HACK CLUB'S <span class="underline">BIGGEST</span> EVENT</p>
                 </div>
                 <div in:animateStripesIn>
-                    <Stripes small />
+                    <Stripes small {disableAnimations} />
                 </div>
             </div>
 
             <div class="flex flex-col items-center gap-7 w-full px-10">
-                <div in:fly={{ x: 50, duration: 400, delay: 500 }} bind:this={cardRefs[0]} onmouseenter={() => { usingKeyboard = false; selectedCard = 0; }} onclick={() => { if (selectedCard === 0) activateJoinNow(); }}>
+                <div in:fly={{ x: disableAnimations ? 0 : 50, duration: disableAnimations ? 0 : 400, delay: disableAnimations ? 0 : 500 }} bind:this={cardRefs[0]} onmouseenter={() => { usingKeyboard = false; selectedCard = 0; }} onclick={() => { if (selectedCard === 0) activateJoinNow(); }}>
                     <MenuItem 
                         title="JOIN NOW" 
                         subtitle="START WORKING ON YOUR PROJECTS!"
                         chevron
                         selected={selectedCard === 0}
                         preserveIcon
+                        {disableAnimations}
                     >
                         {#snippet icon()}
                             <img src={horizonIcon} alt="Watch" />
                         {/snippet}
                     </MenuItem>
                 </div>
-                <div in:fly={{ x: 50, duration: 400, delay: 600 }} bind:this={cardRefs[1]} onmouseenter={() => { usingKeyboard = false; selectedCard = 1; }}>
+                <div in:fly={{ x: disableAnimations ? 0 : 50, duration: disableAnimations ? 0 : 400, delay: disableAnimations ? 0 : 600 }} bind:this={cardRefs[1]} onmouseenter={() => { usingKeyboard = false; selectedCard = 1; }}>
                     <MenuItem 
                         title="WHAT'S HORIZON?" 
                         selected={selectedCard === 1}
                         preserveIcon
+                        {disableAnimations}
                     >
                         {#snippet icon()}
                             <img src={faqIcon} alt="Watch" />
                         {/snippet}
                     </MenuItem>
                 </div>
-                <div in:fly={{ x: 50, duration: 400, delay: 700 }} bind:this={cardRefs[2]} onmouseenter={() => { usingKeyboard = false; selectedCard = 2; }}>
+                <div in:fly={{ x: disableAnimations ? 0 : 50, duration: disableAnimations ? 0 : 400, delay: disableAnimations ? 0 : 700 }} bind:this={cardRefs[2]} onmouseenter={() => { usingKeyboard = false; selectedCard = 2; }}>
                     <MenuItem 
                         title="WATCH THE VIDEO" 
                         selected={selectedCard === 2}
                         preserveIcon
+                        {disableAnimations}
                     >
                         {#snippet icon()}
                             <img src={playIcon} alt="Watch" />
@@ -313,8 +321,8 @@
                 </div>
             </div>
 
-            <div in:fly={{ y: 20, duration: 300, delay: 800 }} class="flex justify-center absolute bottom-32 left-0 right-0">
-                <BobaText text="USE  WASD  OR  YOUR  MOUSE" fontSize={36} wave />
+            <div in:fly={{ y: disableAnimations ? 0 : 20, duration: disableAnimations ? 0 : 300, delay: disableAnimations ? 0 : 800 }} class="flex justify-center absolute bottom-32 left-0 right-0">
+                <BobaText text="USE  WASD  OR  YOUR  MOUSE" fontSize={36} wave {disableAnimations} />
             </div>
         </div>
     {/if}

@@ -10,12 +10,13 @@
         class?: string;
         icon?: Snippet;
         preserveIcon?: boolean;
+        disableAnimations?: boolean;
     }
 
-    let { title, subtitle, selected = false, chevron = false, class: className = '', icon, preserveIcon = false }: Props = $props();
+    let { title, subtitle, selected = false, chevron = false, class: className = '', icon, preserveIcon = false, disableAnimations = false }: Props = $props();
 </script>
 
-<div class="menu-item {className} cursor-pointer" class:selected>
+<div class="menu-item {className} cursor-pointer" class:selected class:no-anim={disableAnimations}>
     <div class="content">
         <p class="title">{title}</p>
         <p class="subtitle" class:visible={subtitle && selected}>{subtitle ?? ''}</p>
@@ -131,5 +132,12 @@
     .chevron {
         height: 180px;
         width: auto;
+    }
+
+    .menu-item.no-anim,
+    .menu-item.no-anim .subtitle,
+    .menu-item.no-anim .icon,
+    .menu-item.no-anim .chevrons {
+        transition: none;
     }
 </style>

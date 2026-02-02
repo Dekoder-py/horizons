@@ -5,10 +5,13 @@
         text?: string;
         fontSize?: number;
         wave?: boolean;
-        pressed?: boolean
+        pressed?: boolean;
+        disableAnimations?: boolean;
     }
 
-    let { text = ">PRESS ENTER", fontSize = 32, wave = false, pressed = false }: Props = $props();
+    let { text = ">PRESS ENTER", fontSize = 32, wave = false, pressed = false, disableAnimations = false }: Props = $props();
+    
+    const shouldWave = $derived(wave && !disableAnimations);
 
     let textEl: SVGTextElement;
     let measureEl: SVGTextElement;
@@ -33,7 +36,7 @@
     onMount(() => {
         updateWidth();
         
-        if (wave) {
+        if (shouldWave) {
             let startTime = performance.now();
             function animate() {
                 if (pressed) {
@@ -60,7 +63,7 @@
             const bbox = el.getBBox();
             svgWidth = bbox.width + 22;
             
-            if (wave) {
+            if (shouldWave) {
                 const tempWidths: number[] = [];
                 for (let i = 0; i < chars.length; i++) {
                     const extent = el.getExtentOfChar(i);
@@ -83,11 +86,9 @@
 <div class="boba-container">
     <svg width={svgWidth || 'auto'} height={fontSize + 22} overflow="visible" fill="none" xmlns="http://www.w3.org/2200/svg">
         <!-- Hidden measurement text -->
-        {#if wave}
-            <text bind:this={measureEl} fill="black" stroke="#F9F3EB" style="white-space: pre; paint-order: stroke; opacity: 0; pointer-events: none;" stroke-width="22" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em"><tspan x="5" y={fontSize}>{text}</tspan></text>
-        {/if}
+        <text bind:this={measureEl} fill="black" stroke="#F9F3EB" style="white-space: pre; paint-order: stroke; opacity: 0; pointer-events: none;" stroke-width="22" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em"><tspan x="5" y={fontSize}>{text}</tspan></text>
         
-        {#if wave && charWidths.length > 0}
+        {#if shouldWave && charWidths.length > 0}
             <text class="boba-shadow" class:pressed={pressed} stroke="black" style="white-space: pre; paint-order: stroke" stroke-width="22" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em">
                 {#each chars as char, i}
                     <tspan x={charPositions()[i]} y={fontSize + (waveOffsets[i] || 0)}>{char}</tspan>

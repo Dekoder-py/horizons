@@ -10,9 +10,10 @@
         blink?: boolean;
         wave?: boolean;
         fallbackWidth?: number;
+        disableAnimations?: boolean;
     }
 
-    let { text = ">PRESS ENTER", fontSize = 32, fallbackWidth = 0, pressed = false, blink = true, wave = false, className = "", ...rest }: Props = $props();
+    let { text = ">PRESS ENTER", fontSize = 32, fallbackWidth = 0, pressed = false, blink = true, wave = false, className = "", disableAnimations = false, ...rest }: Props = $props();
 
     let buttonEl: HTMLButtonElement;
 
@@ -21,8 +22,8 @@
     }
 </script>
 
-<button bind:this={buttonEl} class="boba-container {className}" class:blink {...rest}>
-    <BobaText {text} {fontSize} {wave} {pressed} />
+<button bind:this={buttonEl} class="boba-container {className}" class:blink={blink && !disableAnimations} {...rest}>
+    <BobaText {text} {fontSize} {wave} {pressed} {disableAnimations} />
 </button>
 
 <style>
