@@ -17,8 +17,6 @@
     let measureEl: SVGTextElement;
     let svgWidth = $state(0);
     let charWidths = $state<number[]>([]);
-    let waveTime = $state(0);
-    let animationFrame: number;
     let measured = false;
 
     const chars = $derived(text.split(''));
@@ -33,28 +31,12 @@
         });
     });
 
-    function getWaveOffset(i: number): number {
-        if (pressed) return 0;
-        return Math.sin((waveTime / 400) + (i * 0.2)) * 3;
-    }
+    // Wave animation timing for each character (staggered)
+    const waveAmplitude = 3;
+    const waveDuration = 2; // seconds for full cycle
 
     onMount(() => {
         updateWidth();
-        
-        if (shouldWave) {
-            let startTime = performance.now();
-            function animate() {
-                if (!pressed) {
-                    waveTime = performance.now() - startTime;
-                }
-                animationFrame = requestAnimationFrame(animate);
-            }
-            animate();
-        }
-        
-        return () => {
-            if (animationFrame) cancelAnimationFrame(animationFrame);
-        };
     });
 
     function updateWidth() {
@@ -89,16 +71,20 @@
         <text bind:this={measureEl} fill="black" stroke="#F9F3EB" style="white-space: pre; paint-order: stroke; opacity: 0; pointer-events: none;" stroke-width="22" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em"><tspan x="5" y={fontSize}>{text}</tspan></text>
         
         {#if shouldWave && charWidths.length > 0}
-            <text class="boba-shadow" class:pressed={pressed} stroke="black" style="white-space: pre; paint-order: stroke" stroke-width="22" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em">
-                {#each chars as char, i}
-                    <tspan x={charPositions()[i]} y={fontSize + getWaveOffset(i)}>{char}</tspan>
-                {/each}
-            </text>
-            <text class="front" class:pressed={pressed} bind:this={textEl} fill="black" stroke={pressed ? '#FFA936' : '#F9F3EB'} style="white-space: pre; paint-order: stroke; transition: stroke 0.15s ease;" stroke-width="15" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em">
-                {#each chars as char, i}
-                    <tspan x={charPositions()[i]} y={fontSize + getWaveOffset(i)}>{char}</tspan>
-                {/each}
-            </text>
+            {#each chars as char, i}
+                <g class="boba-shadow wave-char" class:pressed={pressed} style="animation-delay: {i * 0.08}s">
+                    <text stroke="black" style="white-space: pre; paint-order: stroke" stroke-width="22" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em">
+                        <tspan x={charPositions()[i]} y={fontSize}>{char}</tspan>
+                    </text>
+                </g>
+            {/each}
+            {#each chars as char, i}
+                <g class="front wave-char" class:pressed={pressed} style="animation-delay: {i * 0.08}s">
+                    <text fill="black" stroke={pressed ? '#FFA936' : '#F9F3EB'} style="white-space: pre; paint-order: stroke; transition: stroke 0.15s ease;" stroke-width="15" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em">
+                        <tspan x={charPositions()[i]} y={fontSize}>{char}</tspan>
+                    </text>
+                </g>
+            {/each}
         {:else}
             <text class="boba-shadow" class:pressed={pressed} stroke="black" style="white-space: pre; paint-order: stroke" stroke-width="22" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em"><tspan x="5" y={fontSize}>{text}</tspan></text>
             <text class="front" class:pressed={pressed} bind:this={textEl} fill="black" stroke={pressed ? '#FFA936' : '#F9F3EB'} style="white-space: pre; paint-order: stroke; transition: stroke 0.15s ease;" stroke-width="15" stroke-linejoin="round" xml:space="preserve" font-family="Cook Widetype" font-size={fontSize} font-weight="600" letter-spacing="0em"><tspan x="5" y={fontSize}>{text}</tspan></text>
@@ -135,5 +121,24 @@
 
     .front.pressed {
         transform: translate(3px, 3px);
+    }
+
+    @keyframes wave {
+        0%, 100% { transform: translateY(0); }
+        12.5% { transform: translateY(-2.1px); }
+        25% { transform: translateY(-3px); }
+        37.5% { transform: translateY(-2.1px); }
+        50% { transform: translateY(0); }
+        62.5% { transform: translateY(2.1px); }
+        75% { transform: translateY(3px); }
+        87.5% { transform: translateY(2.1px); }
+    }
+
+    .wave-char {
+        animation: wave 2s linear infinite;
+    }
+
+    .wave-char.pressed {
+        animation: none;
     }
 </style>
