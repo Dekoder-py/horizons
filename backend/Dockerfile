@@ -21,15 +21,16 @@ RUN pnpm install --frozen-lockfile --filter backend --prod
 COPY --from=builder /app/backend/generated ./backend/generated
 
 FROM base AS runner
-WORKDIR /app
+WORKDIR /app/backend
 ENV NODE_ENV=production
 
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/node_modules /app/node_modules
 COPY --from=deps /app/backend/node_modules ./node_modules
 COPY --from=builder /app/backend/dist ./dist
 COPY --from=builder /app/backend/package.json ./package.json
 COPY --from=builder /app/backend/prisma ./prisma
 COPY --from=builder /app/backend/generated ./generated
+COPY --from=builder /app/backend/generated ./dist/generated
 
 EXPOSE 3002
 
