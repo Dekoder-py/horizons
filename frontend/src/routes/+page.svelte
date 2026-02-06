@@ -10,11 +10,12 @@
     import { onMount } from 'svelte';
     import BobaButton from '$lib/components/BobaButton.svelte';
     import CircleIn from '$lib/components/anim/CircleIn.svelte';
-    import SlideOut from '$lib/components/anim/SlideOut.svelte';
     import MenuItem from '$lib/components/MenuItem.svelte';
     import { fade, fly } from 'svelte/transition';
     import { quintOut } from 'svelte/easing';
     import CircleOut from '$lib/components/anim/CircleOut.svelte';
+    import { api } from '$lib/api';
+    import { goto } from '$app/navigation';
 
     let activated = $state(false);
     let pressed = $state(false);
@@ -45,8 +46,20 @@
     let signupEmail = $state('');
     let signupEmailFocused = $state(false);
 
-    function activateJoinNow() {
+    async function activateJoinNow(email: string) {
         showSlideOut = true;
+
+        let authURL = await api.GET('/api/user/auth/login', { 
+            params: {
+                query: {
+                    email
+                }
+            }
+         }).then(response => response.data?.url!);
+         
+        setTimeout(() => {
+            window.location = authURL as string & Location;
+        }, 1200)
     }
 
     let logoRect: DOMRect | null = $state(null);

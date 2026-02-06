@@ -61,7 +61,7 @@ export interface paths {
         };
         get?: never;
         put: operations["UserController_updateUser"];
-        post: operations["UserController_createUser"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -315,41 +315,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get HCA OAuth login URL */
+        get: operations["AuthController_getAuthUrl"];
         put?: never;
-        post: operations["AuthController_requestOtp"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/user/auth/verify-otp": {
+    "/api/user/auth/callback": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Handle HCA OAuth callback */
+        get: operations["AuthController_handleCallback"];
         put?: never;
-        post: operations["AuthController_verifyOtp"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/user/auth/complete-profile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["AuthController_completeProfile"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -363,6 +349,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get current user */
         get: operations["AuthController_getCurrentUser"];
         put?: never;
         post?: never;
@@ -381,6 +368,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Verify current session */
         post: operations["AuthController_verifySession"];
         delete?: never;
         options?: never;
@@ -397,6 +385,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Logout and clear session */
         post: operations["AuthController_logout"];
         delete?: never;
         options?: never;
@@ -413,6 +402,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mark onboarding as complete */
         post: operations["AuthController_completeOnboarding"];
         delete?: never;
         options?: never;
@@ -427,6 +417,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get onboarding status */
         get: operations["AuthController_getOnboardingStatus"];
         put?: never;
         post?: never;
@@ -445,6 +436,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Send OTP to link Hackatime account */
         post: operations["AuthController_sendHackatimeLinkOtp"];
         delete?: never;
         options?: never;
@@ -461,6 +453,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Verify OTP to link Hackatime account */
         post: operations["AuthController_verifyHackatimeLinkOtp"];
         delete?: never;
         options?: never;
@@ -475,6 +468,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get raffle position */
         get: operations["AuthController_getRafflePos"];
         put?: never;
         post?: never;
@@ -1311,12 +1305,6 @@ export interface components {
             rafflePosition?: number;
             stickerToken?: string;
         };
-        CreateUserDto: {
-            /** Format: email */
-            email: string;
-            firstName: string;
-            lastName: string;
-        };
         UpdateUserDto: {
             firstName?: string;
             lastName?: string;
@@ -1338,27 +1326,50 @@ export interface components {
             email: string;
             otpCode: string;
         };
-        LoginDto: {
-            /** Format: email */
-            email: string;
-            referralCode?: string;
+        AuthUrlResponse: {
+            /** @description HCA OAuth authorization URL */
+            url: string;
         };
-        VerifyOtpDto: {
-            /** Format: email */
+        UserBasic: {
+            userId: number;
             email: string;
-            otp: string;
-        };
-        CompleteProfileDto: {
             firstName: string;
             lastName: string;
-            birthday: string;
-            addressLine1?: string;
-            addressLine2?: string;
-            city?: string;
-            state?: string;
-            country?: string;
-            zipCode?: string;
-            airtableRecId?: string;
+        };
+        AuthCallbackResponse: {
+            sessionId: string;
+            isNewUser: boolean;
+            user: components["schemas"]["UserBasic"];
+        };
+        LogoutResponse: {
+            message: string;
+        };
+        OnboardingUser: {
+            userId: number;
+            email: string;
+            firstName: string;
+            lastName: string;
+            onboardComplete: boolean;
+        };
+        CompleteOnboardingResponse: {
+            message: string;
+            user: components["schemas"]["OnboardingUser"];
+        };
+        OnboardingStatusResponse: {
+            onboardComplete: boolean;
+            needsBirthday: boolean;
+            isTemporaryUser: boolean;
+            hasPrefilledData: boolean;
+        };
+        SendHackatimeLinkOtpResponse: {
+            message: string;
+        };
+        VerifyHackatimeLinkOtpResponse: {
+            message: string;
+            hackatimeAccountId: number;
+        };
+        RafflePosResponse: {
+            rafflePos: string | null;
         };
         CreateProjectDto: {
             projectTitle: string;
@@ -1519,27 +1530,6 @@ export interface operations {
         };
         responses: {
             200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    UserController_createUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateUserDto"];
-            };
-        };
-        responses: {
-            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1839,68 +1829,47 @@ export interface operations {
             };
         };
     };
-    AuthController_requestOtp: {
+    AuthController_getAuthUrl: {
         parameters: {
-            query?: never;
+            query?: {
+                referralCode?: string;
+                email?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LoginDto"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AuthController_verifyOtp: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerifyOtpDto"];
-            };
-        };
-        responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AuthUrlResponse"];
                 };
             };
         };
     };
-    AuthController_completeProfile: {
+    AuthController_handleCallback: {
         parameters: {
-            query?: never;
+            query: {
+                code: string;
+                state?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CompleteProfileDto"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AuthCallbackResponse"];
+                };
             };
         };
     };
@@ -1917,7 +1886,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": Record<string, never>;
+                };
             };
         };
     };
@@ -1934,7 +1905,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": Record<string, never>;
+                };
             };
         };
     };
@@ -1947,11 +1920,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogoutResponse"];
+                };
+            };
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LogoutResponse"];
+                };
             };
         };
     };
@@ -1964,11 +1947,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompleteOnboardingResponse"];
+                };
+            };
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CompleteOnboardingResponse"];
+                };
             };
         };
     };
@@ -1985,7 +1978,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OnboardingStatusResponse"];
+                };
             };
         };
     };
@@ -1998,11 +1993,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendHackatimeLinkOtpResponse"];
+                };
+            };
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SendHackatimeLinkOtpResponse"];
+                };
             };
         };
     };
@@ -2015,11 +2020,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyHackatimeLinkOtpResponse"];
+                };
+            };
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["VerifyHackatimeLinkOtpResponse"];
+                };
             };
         };
     };
@@ -2036,7 +2051,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RafflePosResponse"];
+                };
             };
         };
     };

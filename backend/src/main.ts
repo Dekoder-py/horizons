@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import { config } from 'dotenv';
 import { resolve } from 'path';
 import { AllExceptionsFilter } from './http-exception.filter';
+import metadata from './metadata';
 
 if (process.env.NODE_ENV !== 'production') {
   config({ path: resolve(__dirname, '../../../.env') });
@@ -51,6 +52,8 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  await SwaggerModule.loadPluginMetadata(metadata);
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Horizon API')

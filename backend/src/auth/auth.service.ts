@@ -1,8 +1,8 @@
 import { Injectable, UnauthorizedException, BadRequestException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
-import { randomInt } from 'crypto';
-import { RedisService } from '../redis.service';
+import { randomInt, randomBytes, createHmac } from 'crypto';
+
 import { MailService } from '../mail/mail.service';
 import * as jose from 'jose';
 
@@ -33,15 +33,51 @@ export class AuthService {
   private readonly SESSION_EXPIRY_MS = 21 * 24 * 60 * 60 * 1000;
   private readonly OTP_EXPIRY_MS = 600000;
   private readonly HACKCLUB_AUTH_URL = 'https://auth.hackclub.com';
+  private readonly STATE_TTL_MS = 600000; // 10 minutes
   private jwks: jose.JWTVerifyGetKey | null = null;
+
+  private getStateSecret(): string {
+    const secret = process.env.STATE_SECRET || process.env.JWT_SECRET;
+    if (!secret) {
+      throw new HttpException('STATE_SECRET not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+    return secret;
+  }
+
+  private signState(payload: object): string {
+    const data = JSON.stringify(payload);
+    const signature = createHmac('sha256', this.getStateSecret()).update(data).digest('hex');
+    return Buffer.from(JSON.stringify({ data, signature })).toString('base64url');
+  }
+
+  private verifyState(encodedState: string): { referralCode: string | null; timestamp: number } {
+    try {
+      const { data, signature } = JSON.parse(Buffer.from(encodedState, 'base64url').toString());
+      const expectedSignature = createHmac('sha256', this.getStateSecret()).update(data).digest('hex');
+
+      if (signature !== expectedSignature) {
+        throw new UnauthorizedException('Invalid state signature');
+      }
+
+      const payload = JSON.parse(data);
+
+      if (Date.now() - payload.timestamp > this.STATE_TTL_MS) {
+        throw new UnauthorizedException('State expired');
+      }
+
+      return payload;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new BadRequestException('Invalid state parameter');
+    }
+  }
 
   constructor(
     private prisma: PrismaService,
-    private redisService: RedisService,
     private mailService: MailService,
   ) {}
 
-  getAuthUrl(referralCode?: string): string {
+  getAuthUrl(email?: string, referralCode?: string): { url: string } {
     const clientId = process.env.HACKCLUB_CLIENT_ID;
     const redirectUri = process.env.HACKCLUB_REDIRECT_URI;
 
@@ -49,18 +85,26 @@ export class AuthService {
       throw new HttpException('OAuth not configured', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    const state = this.signState({
+      referralCode: referralCode || null,
+      timestamp: Date.now(),
+    });
+
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: 'openid profile email slack_id',
+      scope: 'openid profile email slack_id verification_status',
+      state,
     });
 
-    if (referralCode) {
-      params.set('state', referralCode);
+    if (email) {
+      params.set('login_hint', email);
     }
 
-    return `${this.HACKCLUB_AUTH_URL}/oauth/authorize?${params.toString()}`;
+    return {
+      url: `${this.HACKCLUB_AUTH_URL}/oauth/authorize?${params.toString()}`,
+    };
   }
 
   async handleCallback(code: string, state?: string): Promise<{ sessionId: string; isNewUser: boolean; user: any }> {
@@ -72,16 +116,22 @@ export class AuthService {
       throw new HttpException('OAuth not configured', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    if (!state) {
+      throw new BadRequestException('Missing state parameter');
+    }
+
+    const { referralCode } = this.verifyState(state);
+
     const tokenResponse = await fetch(`${this.HACKCLUB_AUTH_URL}/oauth/token`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
         client_id: clientId,
         client_secret: clientSecret,
         redirect_uri: redirectUri,
         code,
         grant_type: 'authorization_code',
-      }),
+      }).toString(),
     });
 
     if (!tokenResponse.ok) {
@@ -91,13 +141,37 @@ export class AuthService {
     }
 
     const tokens: HackClubTokenResponse = await tokenResponse.json();
-    const claims = await this.verifyIdToken(tokens.id_token);
 
-    if (!claims.email) {
+    const userInfoResponse = await fetch(`${this.HACKCLUB_AUTH_URL}/oauth/userinfo`, {
+      headers: { 'Authorization': `Bearer ${tokens.access_token}` },
+    });
+
+    if (!userInfoResponse.ok) {
+      throw new UnauthorizedException('Failed to fetch user info from Hack Club');
+    }
+
+    const userInfo = await userInfoResponse.json();
+
+    if (!userInfo.email) {
       throw new BadRequestException('Email not provided by Hack Club Auth');
     }
 
-    const referralCode = state || null;
+    const claims: HackClubIdTokenClaims = {
+      iss: this.HACKCLUB_AUTH_URL,
+      sub: userInfo.sub,
+      aud: process.env.HACKCLUB_CLIENT_ID!,
+      exp: 0,
+      iat: 0,
+      email: userInfo.email,
+      email_verified: userInfo.email_verified,
+      given_name: userInfo.given_name,
+      family_name: userInfo.family_name,
+      name: userInfo.name,
+      birthdate: userInfo.birthdate,
+      slack_id: userInfo.slack_id,
+      verification_status: userInfo.verification_status,
+    };
+
     const { user, isNewUser } = await this.findOrCreateUser(claims, referralCode);
 
     if (!isNewUser && this.calculateAge(user.birthday) >= 19) {

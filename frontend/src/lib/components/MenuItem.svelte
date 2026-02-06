@@ -13,7 +13,7 @@
         disableAnimations?: boolean;
         showSignup?: boolean;
         email?: string;
-        onSignup?: () => void;
+        onSignup?: (email: string) => void;
         signupHint?: string;
         emailFocused?: boolean;
     }
@@ -36,7 +36,7 @@
             e.preventDefault();
             if (isValidEmail) {
                 showInvalidHint = false;
-                onSignup?.();
+                onSignup?.(email);
             } else {
                 showInvalidHint = true;
             }
@@ -68,7 +68,7 @@
                     onkeydown={handleEmailKeydown}
                     oninput={handleEmailInput}
                 />
-                <button class="signup-btn" class:valid={isValidEmail} onclick={(e) => { e.stopPropagation(); onSignup?.(); }}>SIGN UP</button>
+                <button class="signup-btn" class:valid={isValidEmail} onclick={(e) => { e.stopPropagation(); onSignup?.(email); }}>SIGN UP</button>
             </div>
             {#if signupHint}
                 <p class="signup-hint" class:visible={selected && ((!email && !emailFocused) || (emailFocused && isValidEmail) || showInvalidHint)} class:error={showInvalidHint}>{showInvalidHint ? 'Please enter a valid email' : (emailFocused && isValidEmail ? 'Press enter to sign up' : signupHint)}</p>
