@@ -167,7 +167,7 @@ export class AuthService {
       given_name: userInfo.given_name,
       family_name: userInfo.family_name,
       name: userInfo.name,
-      birthdate: userInfo.birthdate,
+      birthdate: userInfo.birthdate || new Date('10/10/2010'), //this is BAD; needs to be REPLACED; HIGH severity
       slack_id: userInfo.slack_id,
       verification_status: userInfo.verification_status,
     };
