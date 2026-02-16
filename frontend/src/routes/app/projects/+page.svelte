@@ -18,10 +18,10 @@
 		loading = true;
 		error = null;
 		const { data, error: err } = await api.GET('/api/projects/auth');
-		if (err) {
-			error = 'Failed to load projects';
-		} else {
+		if (data) {
 			projects = (data as ProjectResponse[]) ?? [];
+		} else {
+			error = 'Failed to load projects';
 		}
 		loading = false;
 	}
@@ -59,9 +59,20 @@
 		const containerHeight = listEl.parentElement?.clientHeight ?? 0;
 		const cardTop = card.offsetTop;
 		const cardHeight = card.offsetHeight;
+		const listHeight = listEl.scrollHeight;
 
 		// Center the selected card vertically
-		scrollOffset = -(cardTop + cardHeight / 2 - containerHeight / 2);
+		let offset = -(cardTop + cardHeight / 2 - containerHeight / 2);
+
+		// Don't push the list below its natural top position
+		offset = Math.min(offset, 0);
+
+		// Don't scroll past the bottom
+		if (listHeight > containerHeight) {
+			offset = Math.max(offset, -(listHeight - containerHeight));
+		}
+
+		scrollOffset = offset;
 	}
 
 	const selectedProject = $derived(
@@ -75,12 +86,14 @@
 
 <div class="relative size-full">
 	<!-- Hero image -->
-	<TurbulentImage
-		src={selectedProject?.screenshotUrl ?? heroPlaceholder}
-		alt={selectedProject?.projectTitle ?? 'New Project'}
-		inset="0 -40% 0 40%"
-		zIndex={0}
-	/>
+	<div style="opacity: {selectedProject ? 1 : 0}; transition: opacity 0.4s ease;">
+		<TurbulentImage
+			src={selectedProject?.screenshotUrl ?? heroPlaceholder}
+			alt={selectedProject?.projectTitle ?? 'New Project'}
+			inset="0 -40% 0 40%"
+			zIndex={0}
+		/>
+	</div>
 
 	<!-- Scrollable project list -->
 	<div class="absolute left-10.5 top-45 bottom-10 w-215 overflow-visible z-2" role="listbox" tabindex="-1">

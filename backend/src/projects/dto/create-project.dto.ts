@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayMinSize, IsArray, IsEnum, IsNotEmpty, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
-import { ProjectType } from '../../enums/project-type.enum';
+import { ProjectType } from '../../../generated/prisma/client';
 
 export class CreateProjectDto {
   @ApiProperty({ description: 'Project title', maxLength: 30 })

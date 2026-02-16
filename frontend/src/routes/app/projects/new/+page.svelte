@@ -2,13 +2,62 @@
 	import { goto } from '$app/navigation';
 	import InputPrompt from '$lib/components/InputPrompt.svelte';
 	import heroPlaceholder from '$lib/assets/projects/hero-placeholder.png';
+	import { api, type components } from '$lib/api';
+    import TurbulentImage from '$lib/components/TurbulentImage.svelte';
+
+	type ProjectType = components['schemas']['CreateProjectDto']['projectType'];
+
+	const projectTypes: { label: string; value: ProjectType }[] = [
+		{ label: 'Windows Playable', value: 'windows_playable' },
+		{ label: 'Mac Playable', value: 'mac_playable' },
+		{ label: 'Linux Playable', value: 'linux_playable' },
+		{ label: 'Web Playable', value: 'web_playable' },
+		{ label: 'Cross-Platform Playable', value: 'cross_platform_playable' },
+	];
 
 	let title = $state('');
-	let projectType = $state('Windows Executable');
+	let projectType = $state<ProjectType>('web_playable');
 	let description = $state('');
 	let demoUrl = $state('');
 	let codeUrl = $state('');
-	let readmeUrl = $state('');
+	let submitting = $state(false);
+	let errorMsg = $state<string | null>(null);
+
+	let fileInput: HTMLInputElement;
+	let mediaUrl = $state<string | null>(null);
+	let mediaPreview = $state<string | null>(null);
+	let uploading = $state(false);
+
+	async function handleFileSelect(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		// Show local preview
+		mediaPreview = URL.createObjectURL(file);
+
+		uploading = true;
+		errorMsg = null;
+
+		const formData = new FormData();
+		formData.append('file', file);
+
+		const { data, error } = await api.POST('/api/uploads', {
+			body: formData as any,
+			bodySerializer: (body: any) => body,
+		});
+
+		if (data) {
+			mediaUrl = data.url;
+		} else {
+			errorMsg = 'Failed to upload file. Please try again.';
+			mediaPreview = null;
+			mediaUrl = null;
+		}
+
+		uploading = false;
+		input.value = '';
+	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
@@ -16,8 +65,33 @@
 		}
 	}
 
-	function handleSubmit() {
-		// TODO: submit project creation
+	async function handleSubmit() {
+		if (!title.trim() || !description.trim()) {
+			errorMsg = 'Title and description are required';
+			return;
+		}
+
+		submitting = true;
+		errorMsg = null;
+
+		const { data, error } = await api.POST('/api/projects/auth', {
+			body: {
+				projectTitle: title.trim(),
+				projectType,
+				projectDescription: description.trim(),
+				playableUrl: demoUrl.trim() || undefined,
+				repoUrl: codeUrl.trim() || undefined,
+				screenshotUrl: mediaUrl || undefined,
+			},
+		});
+
+		if (data) {
+			goto(`/app/projects/${data.projectId}`);
+		} else {
+			errorMsg = 'Failed to create project. Please try again.';
+		}
+
+		submitting = false;
 	}
 </script>
 
@@ -25,101 +99,123 @@
 
 <div class="relative size-full">
 	<!-- Hero image -->
-	<div class="hero-image">
-		<img src={heroPlaceholder} alt="Project hero" />
-	</div>
+	<!-- <div class="absolute left-1/2 top-0 -translate-x-1/2 w-[856px] h-[482px] rounded-3xl overflow-hidden z-0 pointer-events-none">
+		<img src={heroPlaceholder} alt="Project hero" class="size-full object-cover" />
+	</div> -->
+ 	<!-- <TurbulentImage
+		src={heroPlaceholder}
+		alt={'Placeholder'}
+		inset="0 -40% 0 40%"
+		
+		zIndex={0}
+	/> -->
 
 	<!-- Project form card -->
-	<div class="form-card">
-		<h1 class="form-title">Create New Project</h1>
+	<div class="absolute left-1/2 top-1/2 -translate-x-[calc(50%+0.5px)] -translate-y-[calc(50%+0.5px)]  w-[727px] bg-[#f3e8d8] border-4 border-black rounded-[20px] p-[30px] shadow-[4px_4px_0px_0px_black] flex flex-col gap-2 overflow-clip z-[1]">
+		<h1 class="font-cook text-4xl font-semibold text-black m-0 leading-normal">Create New Project</h1>
+		<h2 class="font-bricolage text-lg text-black/80 leading-normal">Fill out these fields. Not all of them need to be completed right now.</h2>
 
-		<div class="form-body">
+		<div class="flex gap-4 w-full">
 			<!-- Column 1 -->
-			<div class="form-col">
-				<div class="field">
-					<label class="field-label" for="title">Title</label>
+			<div class="flex-1 flex flex-col gap-2 min-w-0">
+				<div class="flex flex-col gap-1 w-full">
+					<label class="font-bricolage text-base font-semibold text-black leading-normal" for="title">Title</label>
 					<input
 						id="title"
-						class="field-input"
+						class="bg-[#f3e8d8] border-2 border-black rounded-lg px-4 py-2 shadow-[2px_2px_0px_0px_black] font-bricolage text-base font-semibold text-black w-full outline-none appearance-none placeholder:text-black/50"
 						type="text"
 						placeholder="Horizons"
 						bind:value={title}
 					/>
 				</div>
 
-				<div class="field">
-					<label class="field-label" for="project-type">Project Type</label>
-					<select id="project-type" class="field-input" bind:value={projectType}>
-						<option>Windows Executable</option>
-						<option>Mac App</option>
-						<option>Web App</option>
-						<option>Mobile App</option>
-						<option>Other</option>
+				<div class="flex flex-col gap-1 w-full">
+					<label class="font-bricolage text-base font-semibold text-black leading-normal" for="project-type">Project Type</label>
+					<select id="project-type" class="bg-[#f3e8d8] border-2 border-black rounded-lg px-4 py-2 shadow-[2px_2px_0px_0px_black] font-bricolage text-base font-semibold text-black w-full outline-none appearance-none" bind:value={projectType}>
+						{#each projectTypes as pt}
+							<option value={pt.value}>{pt.label}</option>
+						{/each}
 					</select>
 				</div>
 
-				<div class="field">
-					<label class="field-label" for="description">Description</label>
+				<div class="flex flex-col gap-1 w-full">
+					<label class="font-bricolage text-base font-semibold text-black leading-normal" for="description">Description</label>
 					<textarea
 						id="description"
-						class="field-textarea"
+						class="bg-[#f3e8d8] border-2 border-black rounded-lg px-4 py-2 shadow-[2px_2px_0px_0px_black] font-bricolage text-base font-semibold text-black w-full outline-none resize-none placeholder:text-black/50"
 						placeholder="Describe what your project does..."
 						rows="4"
 						bind:value={description}
 					></textarea>
 				</div>
 
-				<div class="field">
+				<div class="flex flex-col gap-1 w-full">
 					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="field-label">Screenshot/Video</label>
-					<button class="media-upload" type="button">
-						<span class="media-upload-text">+ Upload Screenshot/Video</span>
-					</button>
-					<p class="field-hint">
+					<label class="font-bricolage text-base font-semibold text-black leading-normal">Screenshot/Video</label>
+					<input
+						bind:this={fileInput}
+						type="file"
+						accept="image/*,video/*"
+						class="hidden"
+						onchange={handleFileSelect}
+					/>
+					{#if mediaPreview}
+						<button
+							class="hover-juice-bg bg-[#f3e8d8] border-2 border-black rounded-lg overflow-hidden shadow-[2px_2px_0px_0px_black] w-full cursor-pointer relative"
+							type="button"
+							onclick={() => fileInput.click()}
+							disabled={uploading}
+						>
+							<img src={mediaPreview} alt="Upload preview" class="w-full h-32 object-cover" />
+							{#if uploading}
+								<div class="absolute inset-0 bg-black/40 flex items-center justify-center">
+									<span class="font-bricolage text-base font-semibold text-white">Uploading...</span>
+								</div>
+							{/if}
+						</button>
+					{:else}
+						<button
+							class="hover-juice-bg bg-[#f3e8d8] border-2 border-black rounded-lg p-4 shadow-[2px_2px_0px_0px_black] w-full cursor-pointer"
+							type="button"
+							onclick={() => fileInput.click()}
+						>
+							<span class="font-bricolage text-base font-semibold text-black/50 text-center block">+ Upload Screenshot/Video</span>
+						</button>
+					{/if}
+					<p class="font-bricolage text-xs font-semibold text-black/60 m-0 leading-normal">
 						If your project is difficult to experience, we recommend uploading a video
 					</p>
 				</div>
 			</div>
 
 			<!-- Column 2 -->
-			<div class="form-col">
-				<div class="field">
-					<label class="field-label" for="demo-url">Demo URL</label>
+			<div class="flex-1 flex flex-col gap-2 min-w-0">
+				<div class="flex flex-col gap-1 w-full">
+					<label class="font-bricolage text-base font-semibold text-black leading-normal" for="demo-url">Demo URL</label>
 					<input
 						id="demo-url"
-						class="field-input"
+						class="bg-[#f3e8d8] border-2 border-black rounded-lg px-4 py-2 shadow-[2px_2px_0px_0px_black] font-bricolage text-base font-semibold text-black w-full outline-none appearance-none placeholder:text-black/50"
 						type="url"
 						placeholder="https://username.itch.io/mygame"
 						bind:value={demoUrl}
 					/>
 				</div>
 
-				<div class="field">
-					<label class="field-label" for="code-url">Code URL</label>
+				<div class="flex flex-col gap-1 w-full">
+					<label class="font-bricolage text-base font-semibold text-black leading-normal" for="code-url">Code URL</label>
 					<input
 						id="code-url"
-						class="field-input"
+						class="bg-[#f3e8d8] border-2 border-black rounded-lg px-4 py-2 shadow-[2px_2px_0px_0px_black] font-bricolage text-base font-semibold text-black w-full outline-none appearance-none placeholder:text-black/50"
 						type="url"
 						placeholder="https://username.itch.io/mygame"
 						bind:value={codeUrl}
 					/>
 				</div>
 
-				<div class="field">
-					<label class="field-label" for="readme-url">README URL</label>
-					<input
-						id="readme-url"
-						class="field-input"
-						type="url"
-						placeholder="https://username.itch.io/mygame"
-						bind:value={readmeUrl}
-					/>
-				</div>
-
-				<div class="field">
+				<div class="flex flex-col gap-1 w-full">
 					<!-- svelte-ignore a11y_label_has_associated_control -->
-					<label class="field-label">Hackatime Projects</label>
-					<button class="hackatime-btn" type="button">
+					<label class="font-bricolage text-base font-semibold text-black leading-normal">Hackatime Projects</label>
+					<button class="hover-juice bg-[#fc5b3c] border-2 border-black rounded-lg px-4 py-2 w-full flex items-center justify-between cursor-pointer font-bricolage text-base font-semibold text-black" type="button">
 						<span>Link Hackatime Projects</span>
 						<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
 							<path d="M4 12L12 4M12 4H5M12 4V11" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -130,255 +226,38 @@
 		</div>
 
 		<!-- Submit -->
-		<div class="submit-row">
-			<button class="submit-btn" type="button" onclick={handleSubmit}>
-				CREATE PROJECT
+		{#if errorMsg}
+			<p class="font-bricolage text-sm font-semibold text-red-600 m-0 text-center">{errorMsg}</p>
+		{/if}
+		<div class="flex items-center justify-center w-full">
+			<button class="hover-juice bg-[#ffa936] border-2 border-black rounded-lg px-4 py-2 w-[415px] font-bricolage text-base font-semibold text-black cursor-pointer" type="button" onclick={handleSubmit} disabled={submitting}>
+				{submitting ? 'CREATING...' : 'CREATE PROJECT'}
 			</button>
 		</div>
 	</div>
 
 	<!-- Back button -->
-	<button class="back-card" onclick={() => goto('/app/projects')}>
+	<button class="hover-juice-bg absolute left-8 top-13 z-5 flex items-center gap-2.5 p-5 bg-[#f3e8d8] border-4 border-black rounded-[20px] shadow-[4px_4px_0px_0px_black] cursor-pointer overflow-hidden" onclick={() => goto('/app/projects')}>
 		<InputPrompt type="ESC" />
-		<span class="back-text">BACK</span>
+		<span class="font-cook text-2xl font-semibold text-black">BACK</span>
 	</button>
 </div>
 
 <style>
-	/* Hero image */
-	.hero-image {
-		position: absolute;
-		left: 50%;
-		top: 0;
-		transform: translateX(-50%);
-		width: 856px;
-		height: 482px;
-		border-radius: 24px;
-		overflow: hidden;
-		z-index: 0;
-		pointer-events: none;
+	.hover-juice {
+		transition: transform var(--juice-duration) var(--juice-easing);
+	}
+	.hover-juice:hover {
+		transform: scale(var(--juice-scale));
 	}
 
-	.hero-image img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
-
-	/* Form card */
-	.form-card {
-		position: absolute;
-		left: 50%;
-		top: 207px;
-		transform: translateX(calc(-50% - 0.5px));
-		width: 727px;
-		background-color: #f3e8d8;
-		border: 4px solid black;
-		border-radius: 20px;
-		padding: 30px;
-		box-shadow: 4px 4px 0px 0px black;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		overflow: clip;
-		z-index: 1;
-	}
-
-	.form-title {
-		font-family: 'Cook Widetype', sans-serif;
-		font-size: 36px;
-		font-weight: 600;
-		color: black;
-		margin: 0;
-		line-height: normal;
-	}
-
-	/* Form body - two columns */
-	.form-body {
-		display: flex;
-		gap: 16px;
-		width: 100%;
-	}
-
-	.form-col {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 0;
-	}
-
-	/* Field groups */
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		width: 100%;
-	}
-
-	.field-label {
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 16px;
-		font-weight: 600;
-		color: black;
-		line-height: normal;
-	}
-
-	.field-input {
-		background-color: #f3e8d8;
-		border: 2px solid black;
-		border-radius: 8px;
-		padding: 8px 16px;
-		box-shadow: 2px 2px 0px 0px black;
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 16px;
-		font-weight: 600;
-		color: black;
-		width: 100%;
-		outline: none;
-		appearance: none;
-	}
-
-	.field-input::placeholder {
-		color: rgba(0, 0, 0, 0.5);
-	}
-
-	.field-textarea {
-		background-color: #f3e8d8;
-		border: 2px solid black;
-		border-radius: 8px;
-		padding: 8px 16px;
-		box-shadow: 2px 2px 0px 0px black;
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 16px;
-		font-weight: 600;
-		color: black;
-		width: 100%;
-		outline: none;
-		resize: none;
-	}
-
-	.field-textarea::placeholder {
-		color: rgba(0, 0, 0, 0.5);
-	}
-
-	/* Media upload */
-	.media-upload {
-		background-color: #f3e8d8;
-		border: 2px solid black;
-		border-radius: 8px;
-		padding: 16px;
-		box-shadow: 2px 2px 0px 0px black;
-		width: 100%;
-		cursor: pointer;
+	.hover-juice-bg {
 		transition:
 			background-color var(--selected-duration) ease,
 			transform var(--juice-duration) var(--juice-easing);
 	}
-
-	.media-upload:hover {
+	.hover-juice-bg:hover {
 		background-color: #ffa936;
 		transform: scale(var(--juice-scale));
-	}
-
-	.media-upload-text {
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 16px;
-		font-weight: 600;
-		color: rgba(0, 0, 0, 0.5);
-		text-align: center;
-		display: block;
-	}
-
-	.field-hint {
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 12px;
-		font-weight: 600;
-		color: rgba(0, 0, 0, 0.6);
-		margin: 0;
-		line-height: normal;
-	}
-
-	/* Hackatime button */
-	.hackatime-btn {
-		background-color: #fc5b3c;
-		border: 2px solid black;
-		border-radius: 8px;
-		padding: 8px 16px;
-		width: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		cursor: pointer;
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 16px;
-		font-weight: 600;
-		color: black;
-		transition:
-			transform var(--juice-duration) var(--juice-easing);
-	}
-
-	.hackatime-btn:hover {
-		transform: scale(var(--juice-scale));
-	}
-
-	/* Submit row */
-	.submit-row {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 100%;
-	}
-
-	.submit-btn {
-		background-color: #ffa936;
-		border: 2px solid black;
-		border-radius: 8px;
-		padding: 8px 16px;
-		width: 415px;
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 16px;
-		font-weight: 600;
-		color: black;
-		cursor: pointer;
-		transition:
-			transform var(--juice-duration) var(--juice-easing);
-	}
-
-	.submit-btn:hover {
-		transform: scale(var(--juice-scale));
-	}
-
-	/* Back button */
-	.back-card {
-		position: absolute;
-		left: 32px;
-		top: 52px;
-		z-index: 5;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 20px;
-		background-color: #f3e8d8;
-		border: 4px solid black;
-		border-radius: 20px;
-		box-shadow: 4px 4px 0px 0px black;
-		cursor: pointer;
-		overflow: hidden;
-		transition:
-			background-color var(--selected-duration) ease,
-			transform var(--juice-duration) var(--juice-easing);
-	}
-
-	.back-card:hover {
-		background-color: #ffa936;
-		transform: scale(var(--juice-scale));
-	}
-
-	.back-text {
-		font-family: 'Cook Widetype', sans-serif;
-		font-size: 24px;
-		font-weight: 600;
-		color: black;
 	}
 </style>

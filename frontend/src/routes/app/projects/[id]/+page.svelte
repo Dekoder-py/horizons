@@ -3,15 +3,33 @@
 	import { goto } from '$app/navigation';
 	import heroPlaceholder from '$lib/assets/projects/hero-placeholder.png';
 	import InputPrompt from '$lib/components/InputPrompt.svelte';
+	import TurbulentImage from '$lib/components/TurbulentImage.svelte';
+	import { api, type components } from '$lib/api';
+
+	type ProjectResponse = components['schemas']['ProjectResponse'];
 
 	const projectId = $derived($page.params.id);
 
-	// TODO: replace with real data fetch
-	const project = $derived({
-		id: projectId,
-		title: `MY PROJECT ${projectId}`,
-		description: 'Description',
-		image: heroPlaceholder
+	let project = $state<ProjectResponse | null>(null);
+	let loading = $state(true);
+	let error = $state<string | null>(null);
+
+	async function fetchProject(id: string) {
+		loading = true;
+		error = null;
+		const { data, error: err } = await api.GET('/api/projects/auth/{id}', {
+			params: { path: { id } }
+		});
+		if (data) {
+			project = data as ProjectResponse;
+		} else {
+			error = 'Failed to load project';
+		}
+		loading = false;
+	}
+
+	$effect(() => {
+		fetchProject(projectId);
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -24,150 +42,79 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="relative size-full">
-	<!-- Hero image -->
-	<div class="hero-image">
-		<img src={project.image} alt={project.title} class="size-full object-cover rounded-[24px]" />
-	</div>
-
-	<!-- Project details card -->
-	<div class="project-card">
-		<div class="details">
-			<p class="title">{project.title}</p>
-			<p class="subtitle">{project.description}</p>
+	{#if loading}
+		<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+			<p class="font-cook text-[36px] font-semibold text-black m-0">LOADING...</p>
+		</div>
+	{:else if error}
+		<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+			<p class="font-cook text-[36px] font-semibold text-black m-0">ERROR</p>
+			<p class="font-bricolage text-[32px] font-semibold text-black m-0">{error}</p>
+		</div>
+	{:else if project}
+		<!-- Hero image -->
+		<div
+			class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[calc(50%+73px)] w-214 h-120.5 z-0 pointer-events-none"
+		>
+			<TurbulentImage
+				src={project.screenshotUrl || heroPlaceholder}
+				alt={project.projectTitle}
+				inset="0 0 0 0"
+				filterId="hero-turbulence"
+			/>
 		</div>
 
-		<div class="actions">
-			<button class="action-btn" onclick={() => goto(`/app/projects/${projectId}/edit`)}>
-				EDIT PROJECT
-			</button>
-			<button class="action-btn">
-				RESUBMIT
-			</button>
+		<!-- Project details card -->
+		<div
+			class="absolute bottom-20 left-1/2 -translate-x-[calc(50%+0.5px)] w-181.75 bg-[#f3e8d8] border-4 border-black rounded-[20px] p-7.5 shadow-[4px_4px_0px_0px_black] flex flex-col items-start gap-8 overflow-hidden z-2"
+		>
+			<div class="flex flex-col gap-2 w-full">
+				<p class="font-cook text-[36px] font-semibold text-black m-0">
+					{project.projectTitle}
+				</p>
+				{#if project.description}
+					<p class="font-bricolage text-[32px] font-semibold text-black m-0">
+						{project.description}
+					</p>
+				{/if}
+			</div>
+
+			<div class="flex gap-2.5 w-full justify-center">
+				<button
+					class="action-btn w-70.25 py-2 px-4 bg-[#ffa936] border-2 border-black rounded-lg font-bricolage text-base font-semibold text-black cursor-pointer overflow-hidden hover:scale-(--juice-scale)"
+					onclick={() => goto(`/app/projects/${projectId}/edit`)}
+				>
+					EDIT PROJECT
+				</button>
+				<button
+					class="action-btn w-70.25 py-2 px-4 bg-[#ffa936] border-2 border-black rounded-lg font-bricolage text-base font-semibold text-black cursor-pointer overflow-hidden hover:scale-(--juice-scale)"
+				>
+					RESUBMIT
+				</button>
+			</div>
 		</div>
-	</div>
+	{/if}
 
 	<!-- Back button -->
-	<button class="back-card" onclick={() => goto('/app/projects?noanimate')}>
+	<button
+		class="back-card absolute left-8 top-13 z-5 flex items-center gap-2.5 p-5 bg-[#f3e8d8] border-4 border-black rounded-[20px] shadow-[4px_4px_0px_0px_black] cursor-pointer overflow-hidden hover:bg-[#ffa936] hover:scale-(--juice-scale)"
+		onclick={() => goto('/app/projects?noanimate')}
+	>
 		<InputPrompt type="ESC" />
-		<span class="back-text">BACK</span>
+		<span class="font-cook text-2xl font-semibold text-black">BACK</span>
 	</button>
 </div>
 
 <style>
-	/* Hero image */
-	.hero-image {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, calc(-50% - 73px));
-		width: 856px;
-		height: 482px;
-		z-index: 0;
-		pointer-events: none;
-	}
-
-	/* Project details card */
-	.project-card {
-		position: absolute;
-		bottom: 80px;
-		left: 50%;
-		transform: translateX(calc(-50% - 0.5px));
-		width: 727px;
-		background-color: #f3e8d8;
-		border: 4px solid black;
-		border-radius: 20px;
-		padding: 30px;
-		box-shadow: 4px 4px 0px 0px black;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 32px;
-		overflow: hidden;
-		z-index: 2;
-	}
-
-	.details {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		width: 100%;
-	}
-
-	.title {
-		font-family: 'Cook Widetype', sans-serif;
-		font-size: 36px;
-		font-weight: 600;
-		color: black;
-		margin: 0;
-	}
-
-	.subtitle {
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 32px;
-		font-weight: 600;
-		color: black;
-		margin: 0;
-	}
-
-	/* Action buttons */
-	.actions {
-		display: flex;
-		gap: 10px;
-		width: 100%;
-		justify-content: center;
-	}
-
 	.action-btn {
-		width: 281px;
-		padding: 8px 16px;
-		background-color: #ffa936;
-		border: 2px solid black;
-		border-radius: 8px;
-		font-family: 'Bricolage Grotesque', sans-serif;
-		font-size: 16px;
-		font-weight: 600;
-		color: black;
-		cursor: pointer;
-		overflow: hidden;
 		transition:
 			background-color var(--selected-duration) ease,
-			transform var(--juice-duration) var(--juice-easing);
+			scale var(--juice-duration) var(--juice-easing);
 	}
 
-	.action-btn:hover {
-		transform: scale(var(--juice-scale));
-	}
-
-	/* Back button */
 	.back-card {
-		position: absolute;
-		left: 32px;
-		top: 52px;
-		z-index: 5;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 20px;
-		background-color: #f3e8d8;
-		border: 4px solid black;
-		border-radius: 20px;
-		box-shadow: 4px 4px 0px 0px black;
-		cursor: pointer;
-		overflow: hidden;
 		transition:
 			background-color var(--selected-duration) ease,
-			transform var(--juice-duration) var(--juice-easing);
-	}
-
-	.back-card:hover {
-		background-color: #ffa936;
-		transform: scale(var(--juice-scale));
-	}
-
-	.back-text {
-		font-family: 'Cook Widetype', sans-serif;
-		font-size: 24px;
-		font-weight: 600;
-		color: black;
+			scale var(--juice-duration) var(--juice-easing);
 	}
 </style>

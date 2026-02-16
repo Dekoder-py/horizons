@@ -9,6 +9,7 @@ import { UpdateHackatimeProjectsDto } from './dto/update-hackatime-projects.dto'
 import { Public } from '../auth/public.decorator';
 import {
   ProjectResponse,
+  CreateProjectResponse,
   ProjectMessageResponse,
   DeleteProjectResponse,
   LeaderboardEntry,
@@ -46,7 +47,7 @@ export class ProjectsAuthController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new project' })
-  @ApiOkResponse({ description: 'Project created successfully' })
+  @ApiOkResponse({ type: CreateProjectResponse, description: 'Project created successfully' })
   async createProject(
     @Body() createProjectDto: CreateProjectDto,
     @Req() req: Request,

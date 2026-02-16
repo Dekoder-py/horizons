@@ -231,14 +231,11 @@ model EditRequest {
 }
 
 enum ProjectType {
-  personal_website
-  platformer_game
-  website
-  game
-  terminal_cli
-  desktop_app
-  mobile_app
-  wildcard
+  windows_playable
+  mac_playable
+  linux_playable
+  web_playable
+  cross_platform_playable
 }
 
 enum ApprovalStatus {

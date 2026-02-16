@@ -1,10 +1,8 @@
 export enum ProjectType {
-  PersonalWebsite = 'personal_website',
-  PlatformerGame = 'platformer_game',
-  Website = 'website',
-  Game = 'game',
-  TerminalCli = 'terminal_cli',
-  DesktopApp = 'desktop_app',
-  MobileApp = 'mobile_app',
-  Wildcard = 'wildcard',
+  WindowsPlayable = 'windows_playable',
+  MacPlayable = 'mac_playable',
+  LinuxPlayable = 'linux_playable',
+  WebPlayable = 'web_playable',
+  CrossPlatformPlayable = 'cross_platform_playable',
 }
+ 

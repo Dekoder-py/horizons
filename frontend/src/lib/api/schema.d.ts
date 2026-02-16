@@ -1478,7 +1478,7 @@ export interface components {
              * @description Project type
              * @enum {string}
              */
-            projectType: "personal_website" | "platformer_game" | "website" | "game" | "terminal_cli" | "desktop_app" | "mobile_app" | "wildcard";
+            projectType: "windows_playable" | "mac_playable" | "linux_playable" | "web_playable" | "cross_platform_playable";
             /** @description Project description */
             projectDescription: string;
             /** @description Playable URL for the project */
@@ -1489,6 +1489,50 @@ export interface components {
             screenshotUrl?: string;
             /** @description Linked Hackatime project names */
             nowHackatimeProjects?: string[];
+        };
+        ProjectUserResponse: {
+            /** @description User ID */
+            userId: number;
+            /** @description First name */
+            firstName: string;
+            /** @description Last name */
+            lastName: string;
+        };
+        CreateProjectResponse: {
+            /** @description Project ID */
+            projectId: number;
+            /** @description User ID */
+            userId: number;
+            /** @description Project title */
+            projectTitle: string;
+            /** @description Project type */
+            projectType: string;
+            /** @description Project description */
+            description?: string;
+            /** @description Screenshot URL */
+            screenshotUrl?: string;
+            /** @description Playable URL */
+            playableUrl?: string;
+            /** @description Repository URL */
+            repoUrl?: string;
+            /** @description Approved hours */
+            approvedHours?: number;
+            /** @description Hackatime hours */
+            nowHackatimeHours?: number;
+            /** @description Hackatime project names */
+            nowHackatimeProjects: string[];
+            /**
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updatedAt: string;
+            /** @description Project owner */
+            user: components["schemas"]["ProjectUserResponse"];
         };
         CreateSubmissionDto: {
             /** @description ID of the project to submit */
@@ -2309,7 +2353,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CreateProjectResponse"];
+                };
             };
             201: {
                 headers: {
