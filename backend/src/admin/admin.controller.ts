@@ -17,13 +17,6 @@ export class AdminController {
     return this.adminService.getAllSubmissions();
   }
 
-  @Get('edit-requests')
-  @UseGuards(RolesGuard)
-  @Roles(Role.Admin)
-  async getAllEditRequests() {
-    return this.adminService.getAllEditRequests();
-  }
-
   @Put('submissions/:id')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
@@ -54,27 +47,6 @@ export class AdminController {
     @Req() req: Request,
   ) {
     return this.adminService.unlockProject(id, req.user.userId);
-  }
-
-  @Put('edit-requests/:id/approve')
-  @UseGuards(RolesGuard)
-  @Roles(Role.Admin)
-  async approveEditRequest(
-    @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
-  ) {
-    return this.adminService.approveEditRequest(id, req.user.userId);
-  }
-
-  @Put('edit-requests/:id/reject')
-  @UseGuards(RolesGuard)
-  @Roles(Role.Admin)
-  async rejectEditRequest(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() body: { reason: string },
-    @Req() req: Request,
-  ) {
-    return this.adminService.rejectEditRequest(id, body.reason, req.user.userId);
   }
 
   @Get('projects')

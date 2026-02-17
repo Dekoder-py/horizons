@@ -208,42 +208,13 @@ export class ProjectsService {
 
     const isResubmission = existingSubmissions.length > 0;
 
-    // Check for pending edit request to use requested changes
-    const pendingEditRequest = await this.prisma.editRequest.findFirst({
-      where: {
-        projectId,
-        status: 'pending',
-        requestType: 'project_update',
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    let submissionData: {
-      projectId: number;
-      playableUrl: string | null;
-      screenshotUrl: string | null;
-      description: string | null;
-      repoUrl: string | null;
+    const submissionData = {
+      projectId,
+      playableUrl: project.playableUrl,
+      screenshotUrl: project.screenshotUrl,
+      description: project.description,
+      repoUrl: project.repoUrl,
     };
-
-    if (pendingEditRequest && pendingEditRequest.requestedData) {
-      const requestedData = pendingEditRequest.requestedData as any;
-      submissionData = {
-        projectId,
-        playableUrl: requestedData.playableUrl ?? project.playableUrl,
-        screenshotUrl: requestedData.screenshotUrl ?? project.screenshotUrl,
-        description: requestedData.description ?? project.description,
-        repoUrl: requestedData.repoUrl ?? project.repoUrl,
-      };
-    } else {
-      submissionData = {
-        projectId,
-        playableUrl: project.playableUrl,
-        screenshotUrl: project.screenshotUrl,
-        description: project.description,
-        repoUrl: project.repoUrl,
-      };
-    }
 
     const submission = await this.prisma.submission.create({
       data: submissionData,
@@ -290,12 +261,9 @@ export class ProjectsService {
     return submissions;
   }
 
-  async createEditRequest(projectId: number, updateProjectDto: UpdateProjectDto, userId: number) {
+  async updateProject(projectId: number, updateProjectDto: UpdateProjectDto, userId: number) {
     const project = await this.prisma.project.findUnique({
       where: { projectId },
-      include: {
-        submissions: true,
-      },
     });
 
     if (!project) {
@@ -306,127 +274,38 @@ export class ProjectsService {
       throw new ForbiddenException('Access denied');
     }
 
-    // Get current project data (only user-editable fields)
-    const currentData = {
-      projectTitle: project.projectTitle,
-      description: project.description,
-      playableUrl: project.playableUrl,
-      repoUrl: project.repoUrl,
-      screenshotUrl: project.screenshotUrl,
-    };
-
-    const requestedData: any = {};
+    const updateData: any = {};
     if (updateProjectDto.projectTitle !== undefined) {
-      requestedData.projectTitle = updateProjectDto.projectTitle;
+      updateData.projectTitle = updateProjectDto.projectTitle;
     }
     if (updateProjectDto.description !== undefined) {
-      requestedData.description = updateProjectDto.description;
+      updateData.description = updateProjectDto.description;
     }
     if (updateProjectDto.playableUrl !== undefined) {
-      requestedData.playableUrl = updateProjectDto.playableUrl;
+      updateData.playableUrl = updateProjectDto.playableUrl;
     }
     if (updateProjectDto.repoUrl !== undefined) {
-      requestedData.repoUrl = updateProjectDto.repoUrl;
+      updateData.repoUrl = updateProjectDto.repoUrl;
     }
     if (updateProjectDto.screenshotUrl !== undefined) {
-      requestedData.screenshotUrl = updateProjectDto.screenshotUrl;
+      updateData.screenshotUrl = updateProjectDto.screenshotUrl;
     }
-    // Note: airtableRecId, nowHackatimeProjects, and nowHackatimeHours are system-managed
-    // and should not be included in edit requests or modified by users directly
 
-    if (project.submissions.length === 0) {
-      if (Object.keys(requestedData).length === 0) {
-        return {
-          message: 'No changes provided.',
-          project: this.excludeHoursJustification(project),
-        };
-      }
-
-      const updatedProject = await this.prisma.project.update({
-        where: { projectId },
-        data: requestedData,
-      });
-
+    if (Object.keys(updateData).length === 0) {
       return {
-        message: 'Project updated successfully.',
-        project: this.excludeHoursJustification(updatedProject),
+        message: 'No changes provided.',
+        project: this.excludeHoursJustification(project),
       };
     }
 
-    const existingPendingRequest = await this.prisma.editRequest.findFirst({
-      where: {
-        projectId,
-        status: 'pending',
-        requestType: 'project_update',
-      },
-      orderBy: { createdAt: 'desc' },
+    const updatedProject = await this.prisma.project.update({
+      where: { projectId },
+      data: updateData,
     });
 
-    let editRequest;
-    if (existingPendingRequest) {
-      const mergedRequestedData = {
-        ...(existingPendingRequest.requestedData as any),
-        ...requestedData,
-      };
-      
-      editRequest = await this.prisma.editRequest.update({
-        where: { requestId: existingPendingRequest.requestId },
-        data: {
-          currentData,
-          requestedData: mergedRequestedData,
-          reason: updateProjectDto.editRequestReason || existingPendingRequest.reason,
-        },
-        include: {
-          user: {
-            select: {
-              userId: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          project: {
-            select: {
-              projectId: true,
-              projectTitle: true,
-              projectType: true,
-            },
-          },
-        },
-      });
-    } else {
-      editRequest = await this.prisma.editRequest.create({
-        data: {
-          userId,
-          projectId,
-          requestType: 'project_update',
-          currentData,
-          requestedData,
-          reason: updateProjectDto.editRequestReason,
-        },
-        include: {
-          user: {
-            select: {
-              userId: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          project: {
-            select: {
-              projectId: true,
-              projectTitle: true,
-              projectType: true,
-            },
-          },
-        },
-      });
-    }
-
     return {
-      message: 'Edit request created successfully. Waiting for admin approval.',
-      editRequest,
+      message: 'Project updated successfully.',
+      project: this.excludeHoursJustification(updatedProject),
     };
   }
 

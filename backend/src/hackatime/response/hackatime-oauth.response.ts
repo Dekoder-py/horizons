@@ -53,9 +53,15 @@ export class RecalculateHoursResponse {
 }
 
 export class HackatimeAccountStatusResponse {
-  @ApiProperty({ description: 'Whether a Hackatime account exists' })
-  exists: boolean;
+  @ApiProperty({ description: 'User email' })
+  email: string;
 
-  @ApiProperty({ description: 'Whether the account is linked', required: false })
-  linked?: boolean;
+  @ApiProperty({ description: 'Whether a Hackatime account is linked' })
+  hasHackatimeAccount: boolean;
+
+  @ApiProperty({ description: 'Hackatime account ID', required: false, nullable: true })
+  hackatimeAccountId: string | null;
+
+  @ApiProperty({ description: 'Whether the stored access token is valid' })
+  tokenValid: boolean;
 }

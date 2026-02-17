@@ -38,9 +38,4 @@ export class UpdateProjectDto {
   @IsString({ each: true })
   nowHackatimeProjects?: string[];
 
-  @ApiPropertyOptional({ description: 'Reason for the edit request', maxLength: 500 })
-  @IsString()
-  @IsOptional()
-  @MaxLength(500)
-  editRequestReason?: string;
 }

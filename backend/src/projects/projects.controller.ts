@@ -95,15 +95,15 @@ export class ProjectsAuthController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update a project (creates edit request if submitted)' })
+  @ApiOperation({ summary: 'Update a project' })
   @ApiParam({ name: 'id', description: 'Project ID', type: Number })
-  @ApiOkResponse({ type: ProjectMessageResponse, description: 'Project updated or edit request created' })
+  @ApiOkResponse({ type: ProjectMessageResponse, description: 'Project updated' })
   async updateProject(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateProjectDto: UpdateProjectDto,
     @Req() req: Request,
   ) {
-    return this.projectsService.createEditRequest(id, updateProjectDto, req.user.userId);
+    return this.projectsService.updateProject(id, updateProjectDto, req.user.userId);
   }
 
   @Put(':id/hackatime-projects')

@@ -47,8 +47,6 @@ model User {
 
   projects        Project[]
   sessions        UserSession[]
-  editRequests    EditRequest[]
-  reviewedRequests EditRequest[] @relation("EditRequestReviewer")
   hackatimeLinkOtps HackatimeLinkOtp[]
   transactions    Transaction[]
 
@@ -75,8 +73,6 @@ model Project {
   isFraud             Boolean      @default(false) @map("is_fraud")
   user               User         @relation(fields: [userId], references: [userId], onDelete: Cascade)
   submissions        Submission[]
-  editRequests       EditRequest[]
-
   @@index([userId])
   @@map("projects")
 }
@@ -208,28 +204,6 @@ model SlackLinkToken {
   @@map("slack_link_tokens")
 }
 
-model EditRequest {
-  requestId     Int            @id @default(autoincrement()) @map("request_id")
-  userId        Int            @map("user_id")
-  projectId     Int            @map("project_id")
-  requestType   EditRequestType @map("request_type")
-  currentData   Json           @map("current_data")
-  requestedData Json           @map("requested_data")
-  status        RequestStatus  @default(pending)
-  reason        String?        @db.VarChar(500)
-  reviewedBy    Int?           @map("reviewed_by")
-  reviewedAt    DateTime?      @map("reviewed_at")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  user          User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  project       Project        @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
-  reviewer      User?          @relation("EditRequestReviewer", fields: [reviewedBy], references: [userId])
-
-  @@index([userId])
-  @@index([projectId])
-  @@index([status])
-  @@map("edit_requests")
-}
 
 enum ProjectType {
   windows_playable
@@ -245,16 +219,6 @@ enum ApprovalStatus {
   rejected
 }
 
-enum EditRequestType {
-  project_update
-  user_update
-}
-
-enum RequestStatus {
-  pending
-  approved
-  rejected
-}
 
 model UsersAirtable {
   email      String    @unique @map("email")

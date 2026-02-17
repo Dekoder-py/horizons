@@ -159,9 +159,9 @@ export class HackatimeService {
     const user = await this.prisma.user.findUnique({
       where: { email: userEmail },
       select: {
-        userId: true,
         email: true,
         hackatimeAccount: true,
+        hackatimeAccessToken: true,
       },
     });
 
@@ -169,57 +169,28 @@ export class HackatimeService {
       throw new HttpException('User not found', HttpStatus.NOT_FOUND);
     }
 
-    const hackatimeId = await this.checkHackatimeAccount(userEmail);
-
-    if (hackatimeId && hackatimeId.toString() !== user.hackatimeAccount) {
-      await this.prisma.user.update({
-        where: { userId: user.userId },
-        data: { hackatimeAccount: hackatimeId.toString() },
-      });
+    if (!user.hackatimeAccessToken) {
+      return {
+        email: user.email,
+        hasHackatimeAccount: false,
+        hackatimeAccountId: null,
+        tokenValid: false,
+      };
     }
+
+    const res = await fetch(`${this.HACKATIME_BASE_URL}/api/v1/authenticated/me`, {
+      headers: { 'Authorization': `Bearer ${user.hackatimeAccessToken}` },
+    });
 
     return {
       email: user.email,
-      hasHackatimeAccount: !!hackatimeId,
-      hackatimeAccountId: hackatimeId?.toString() || null,
+      hasHackatimeAccount: true,
+      hackatimeAccountId: user.hackatimeAccount || null,
+      tokenValid: res.ok,
     };
   }
 
-  private async checkHackatimeAccount(email: string): Promise<number | null> {
-    const STATS_API_KEY = process.env.STATS_API_KEY;
-
-    if (!STATS_API_KEY) {
-      console.warn('STATS_API_KEY not configured, skipping Hackatime lookup');
-      return null;
-    }
-
-    try {
-      const encodedEmail = encodeURIComponent(email);
-      const url = `${this.HACKATIME_BASE_URL}/api/v1/users/lookup_email/${encodedEmail}`;
-
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${STATS_API_KEY}` },
-      });
-
-      if (!res.ok) {
-        if (res.status === 404) return null;
-        console.error('Failed to check Hackatime account:', res.status);
-        return null;
-      }
-
-      const data = await res.json();
-      return data.user_id || null;
-    } catch (error) {
-      console.error('Error checking Hackatime account:', error);
-      return null;
-    }
-  }
-
   async getAllHackatimeProjects(userEmail: string): Promise<any> {
-    const HACKATIME_ADMIN_API_URL = process.env.HACKATIME_ADMIN_API_URL || `${this.HACKATIME_BASE_URL}/api/admin/v1`;
-    const HACKATIME_API_KEY = process.env.HACKATIME_API_KEY;
-
     const user = await this.prisma.user.findUnique({
       where: { email: userEmail },
     });
@@ -232,17 +203,19 @@ export class HackatimeService {
       throw new HttpException('No Hackatime account linked to this user', HttpStatus.NOT_FOUND);
     }
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (HACKATIME_API_KEY) {
-      headers['Authorization'] = `Bearer ${HACKATIME_API_KEY}`;
+    if (!user.hackatimeAccessToken) {
+      throw new HttpException('Hackatime access token not available. Please relink your account.', HttpStatus.UNAUTHORIZED);
     }
 
     const res = await fetch(
-      `${HACKATIME_ADMIN_API_URL}/user/projects?id=${user.hackatimeAccount}`,
-      { method: 'GET', headers },
+      `${this.HACKATIME_BASE_URL}/api/v1/authenticated/projects`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.hackatimeAccessToken}`,
+        },
+      },
     );
 
     if (!res.ok) {
@@ -364,6 +337,7 @@ export class HackatimeService {
       where: { userId },
       select: {
         hackatimeAccount: true,
+        hackatimeAccessToken: true,
         projects: {
           select: {
             projectId: true,
@@ -381,13 +355,15 @@ export class HackatimeService {
       throw new HttpException('No Hackatime account linked to this user', HttpStatus.NOT_FOUND);
     }
 
+    if (!user.hackatimeAccessToken) {
+      throw new HttpException('Hackatime access token not available. Please relink your account.', HttpStatus.UNAUTHORIZED);
+    }
+
     if (!user.projects || user.projects.length === 0) {
       return { updatedProjects: 0, totalNowHackatimeHours: 0 };
     }
 
-    const baseUrl = process.env.HACKATIME_ADMIN_API_URL || `${this.HACKATIME_BASE_URL}/api/admin/v1`;
-    const apiKey = process.env.HACKATIME_API_KEY;
-    const { projectsMap } = await this.fetchHackatimeProjectsData(user.hackatimeAccount);
+    const { projectsMap } = await this.fetchHackatimeProjectsData(user.hackatimeAccessToken);
 
     await Promise.all(
       user.projects.map(async project => {
@@ -396,8 +372,7 @@ export class HackatimeService {
           projectNames,
           projectsMap,
           user.hackatimeAccount,
-          baseUrl,
-          apiKey,
+          user.hackatimeAccessToken,
         );
         await this.prisma.project.update({
           where: { projectId: project.projectId },
@@ -411,21 +386,13 @@ export class HackatimeService {
     return { updatedProjects: user.projects.length, totalNowHackatimeHours };
   }
 
-  private async fetchHackatimeProjectsData(hackatimeAccount: string) {
-    const baseUrl = process.env.HACKATIME_ADMIN_API_URL || `${this.HACKATIME_BASE_URL}/api/admin/v1`;
-    const apiKey = process.env.HACKATIME_API_KEY;
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-
-    const response = await fetch(`${baseUrl}/user/projects?id=${hackatimeAccount}`, {
+  private async fetchHackatimeProjectsData(accessToken: string) {
+    const response = await fetch(`${this.HACKATIME_BASE_URL}/api/v1/authenticated/projects`, {
       method: 'GET',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
     });
 
     if (!response.ok) {
@@ -446,7 +413,8 @@ export class HackatimeService {
       const name = entry?.name || entry?.projectName;
 
       if (typeof name === 'string') {
-        const duration = typeof entry?.total_duration === 'number' ? entry.total_duration : 0;
+        const duration = typeof entry?.total_seconds === 'number' ? entry.total_seconds
+          : typeof entry?.total_duration === 'number' ? entry.total_duration : 0;
         projectsMap.set(name, duration);
       }
     };
@@ -465,8 +433,7 @@ export class HackatimeService {
   private async fetchHackatimeProjectDurationsAfterDate(
     hackatimeAccount: string,
     projectNames: string[],
-    baseUrl: string,
-    apiKey?: string,
+    accessToken: string,
     cutoffDate: Date = new Date('2025-10-10T00:00:00Z'),
   ): Promise<Map<string, number>> {
     const startDate = cutoffDate.toISOString().split('T')[0];
@@ -474,11 +441,8 @@ export class HackatimeService {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
     };
-
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
 
     const durationsMap = new Map<string, number>();
 
@@ -519,16 +483,14 @@ export class HackatimeService {
     projectNames: string[],
     projectsMap: Map<string, number>,
     hackatimeAccount?: string,
-    baseUrl?: string,
-    apiKey?: string,
+    accessToken?: string,
   ) {
-    if (hackatimeAccount && baseUrl) {
+    if (hackatimeAccount && accessToken) {
       const cutoffDate = new Date('2025-10-10T00:00:00Z');
       const filteredDurations = await this.fetchHackatimeProjectDurationsAfterDate(
         hackatimeAccount,
         projectNames,
-        baseUrl,
-        apiKey,
+        accessToken,
         cutoffDate,
       );
 

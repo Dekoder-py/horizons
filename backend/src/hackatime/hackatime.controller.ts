@@ -38,8 +38,8 @@ export class HackatimeController {
     @Res() res: Response,
   ): Promise<void> {
     await this.hackatimeService.handleCallback(code, state);
-    const redirectUrl = process.env.HACKATIME_AFTER_LINK_REDIRECT || '/app';
-    res.redirect(redirectUrl);
+    res.setHeader('Content-Type', 'text/html');
+    res.send('<html><body><script>window.close();</script><p>Linked! You can close this tab.</p></body></html>');
   }
 
   @Post('unlink')
