@@ -51,7 +51,7 @@
 			goto(`/app/projects/${projectId}`);
 		} else {
 			const e = error as any;
-			errorMsg = e?.message ?? 'Failed to submit project. Please try again.';
+			errorMsg = e?.error ?? e?.message ?? 'Failed to submit project. Please try again.';
 		}
 
 		submitting = false;
