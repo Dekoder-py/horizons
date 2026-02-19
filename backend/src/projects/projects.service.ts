@@ -486,7 +486,7 @@ export class ProjectsService {
     projectNames: string[],
     baseUrl: string,
     apiKey?: string,
-    cutoffDate: Date = new Date('2025-10-10T00:00:00Z'),
+    cutoffDate: Date = new Date(process.env.HACKATIME_CUTOFF_DATE || '2025-10-10T00:00:00Z'),
   ): Promise<Map<string, number>> {
     const startDate = cutoffDate.toISOString().split('T')[0];
     const hackatimeApiUrl = baseUrl.replace('/api/admin/v1', '/api/v1');
@@ -543,7 +543,7 @@ export class ProjectsService {
     apiKey?: string,
   ) {
     if (hackatimeAccount && baseUrl) {
-      const cutoffDate = new Date('2025-10-10T00:00:00Z');
+      const cutoffDate = new Date(process.env.HACKATIME_CUTOFF_DATE || '2025-10-10T00:00:00Z');
       const filteredDurations = await this.fetchHackatimeProjectDurationsAfterDate(
         hackatimeAccount,
         projectNames,

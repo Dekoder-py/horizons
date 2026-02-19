@@ -434,7 +434,7 @@ export class HackatimeService {
     hackatimeAccount: string,
     projectNames: string[],
     accessToken: string,
-    cutoffDate: Date = new Date('2025-10-10T00:00:00Z'),
+    cutoffDate: Date = new Date(process.env.HACKATIME_CUTOFF_DATE || '2025-10-10T00:00:00Z'),
   ): Promise<Map<string, number>> {
     const startDate = cutoffDate.toISOString().split('T')[0];
     const uri = `${this.HACKATIME_BASE_URL}/api/v1/users/${hackatimeAccount}/stats?features=projects&start_date=${startDate}`;
@@ -486,7 +486,7 @@ export class HackatimeService {
     accessToken?: string,
   ) {
     if (hackatimeAccount && accessToken) {
-      const cutoffDate = new Date('2025-10-10T00:00:00Z');
+      const cutoffDate = new Date(process.env.HACKATIME_CUTOFF_DATE || '2025-10-10T00:00:00Z');
       const filteredDurations = await this.fetchHackatimeProjectDurationsAfterDate(
         hackatimeAccount,
         projectNames,

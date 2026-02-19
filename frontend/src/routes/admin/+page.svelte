@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { env } from "$env/dynamic/public";
     import type { PageData } from "./$types";
 
     type AdminLightUser = {
@@ -263,7 +264,7 @@
 
     function getDefaultDateRange() {
         const today = new Date();
-        const defaultStart = new Date("2025-10-10");
+        const defaultStart = new Date(env.PUBLIC_HACKATIME_CUTOFF_DATE || "2025-10-10");
         return {
             startDate: defaultStart.toISOString().split("T")[0],
             endDate: today.toISOString().split("T")[0],
