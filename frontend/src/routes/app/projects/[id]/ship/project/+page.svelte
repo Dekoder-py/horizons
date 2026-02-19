@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import heroPlaceholder from '$lib/assets/projects/hero-placeholder.png';
 	import { api, type components } from '$lib/api';
 	import TurbulentImage from '$lib/components/TurbulentImage.svelte';
-	import { FormField, FormTextarea, FormSelect, FileUpload, FormCard, BackButton, FormButtons, FormError } from '$lib/components/form';
+	import { FormField, FormTextarea, FormSelect, FileUpload, FormCard, BackButton, FormButtons, FormError, HackatimeSelect } from '$lib/components/form';
 
 	type ProjectType = components['schemas']['CreateProjectDto']['projectType'];
 
@@ -16,7 +16,7 @@
 		{ label: 'Cross-Platform Playable', value: 'cross_platform_playable' },
 	];
 
-	const projectId = $derived($page.params.id);
+	const projectId = $derived(page.params.id);
 
 	let loading = $state(true);
 	let title = $state('');
@@ -30,18 +30,27 @@
 	let mediaUrl = $state<string | null>(null);
 	let mediaPreview = $state<string | null>(null);
 
+	let allHackatimeProjects = $state<{ name: string; total_seconds?: number }[]>([]);
+	let selectedHackatimeNames = $state<Set<string>>(new Set());
+	let hackatimeLoading = $state(true);
+
 	let allFilled = $derived(
 		!!title.trim() && !!description.trim() && !!demoUrl.trim() && !!codeUrl.trim() && !!readmeUrl.trim() && !!mediaUrl
 	);
 
 	async function fetchProject(id: string) {
 		loading = true;
+		hackatimeLoading = true;
 		errorMsg = null;
-		const { data } = await api.GET('/api/projects/auth/{id}', {
-			params: { path: { id: parseInt(id) } }
-		});
-		if (data) {
-			const p = data as any;
+
+		const [projectRes, allHackatimeRes, linkedHackatimeRes] = await Promise.all([
+			api.GET('/api/projects/auth/{id}', { params: { path: { id: parseInt(id) } } }),
+			api.GET('/api/hackatime/projects/all'),
+			api.GET('/api/projects/auth/{id}/hackatime-projects', { params: { path: { id: parseInt(id) } } })
+		]);
+
+		if (projectRes.data) {
+			const p = projectRes.data as any;
 			title = p.projectTitle ?? '';
 			projectType = p.projectType ?? 'web_playable';
 			description = p.description ?? '';
@@ -52,12 +61,32 @@
 		} else {
 			errorMsg = 'Failed to load project';
 		}
+
+		if (allHackatimeRes.data) {
+			allHackatimeProjects = allHackatimeRes.data.projects;
+		}
+
+		if (linkedHackatimeRes.data) {
+			selectedHackatimeNames = new Set(linkedHackatimeRes.data.hackatimeProjects ?? []);
+		}
+
 		loading = false;
+		hackatimeLoading = false;
 	}
 
 	$effect(() => {
 		if (projectId) fetchProject(projectId);
 	});
+
+	function toggleHackatimeProject(name: string) {
+		const next = new Set(selectedHackatimeNames);
+		if (next.has(name)) {
+			next.delete(name);
+		} else {
+			next.add(name);
+		}
+		selectedHackatimeNames = next;
+	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
@@ -82,19 +111,25 @@
 		submitting = true;
 		errorMsg = null;
 
-		const { data } = await api.PUT('/api/projects/auth/{id}', {
-			params: { path: { id: Number(projectId) } },
-			body: {
-				projectTitle: title.trim(),
-				description: description.trim(),
-				playableUrl: demoUrl.trim(),
-				repoUrl: codeUrl.trim(),
-				screenshotUrl: mediaUrl!,
-			},
-		});
+		const [projectRes, hackatimeRes] = await Promise.all([
+			api.PUT('/api/projects/auth/{id}', {
+				params: { path: { id: Number(projectId) } },
+				body: {
+					projectTitle: title.trim(),
+					description: description.trim(),
+					playableUrl: demoUrl.trim(),
+					repoUrl: codeUrl.trim(),
+					screenshotUrl: mediaUrl!,
+				},
+			}),
+			api.PUT('/api/projects/auth/{id}/hackatime-projects', {
+				params: { path: { id: Number(projectId) } },
+				body: { projectNames: Array.from(selectedHackatimeNames) },
+			}),
+		]);
 
-		if (data) {
-			goto(`/app/projects/${projectId}/ship/hackatime`);
+		if (projectRes.data) {
+			goto(`/app/projects/${projectId}/ship/personal`);
 		} else {
 			errorMsg = 'Failed to save project. Please try again.';
 		}
@@ -121,12 +156,18 @@
 					<FormField label="Title" id="title" placeholder="Horizons" bind:value={title} />
 					<FormSelect label="Project Type" id="project-type" options={projectTypes} bind:value={projectType} />
 					<FormTextarea label="Description" id="description" placeholder="Describe what your project does..." bind:value={description} />
+					<FileUpload bind:mediaUrl bind:mediaPreview onerror={(msg) => errorMsg = msg} />
 				</div>
 				<div class="flex-1 flex flex-col gap-2 min-w-0">
 					<FormField label="Demo URL" id="demo-url" type="url" placeholder="https://username.itch.io/mygame" bind:value={demoUrl} />
 					<FormField label="Code URL" id="code-url" type="url" placeholder="https://username.itch.io/mygame" bind:value={codeUrl} />
 					<FormField label="README URL" id="readme-url" type="url" placeholder="https://username.itch.io/mygame" bind:value={readmeUrl} />
-					<FileUpload bind:mediaUrl bind:mediaPreview onerror={(msg) => errorMsg = msg} />
+					<HackatimeSelect
+						projects={allHackatimeProjects}
+						selectedNames={selectedHackatimeNames}
+						onToggle={toggleHackatimeProject}
+						loading={hackatimeLoading}
+					/>
 				</div>
 			</div>
 

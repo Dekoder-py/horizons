@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import heroPlaceholder from '$lib/assets/projects/hero-placeholder.png';
 	import { api, type components } from '$lib/api';
 	import TurbulentImage from '$lib/components/TurbulentImage.svelte';
-	import { FormField, FormTextarea, FormSelect, FileUpload, FormCard, BackButton, FormError, FormSubmitButton } from '$lib/components/form';
+	import { FormField, FormTextarea, FormSelect, FileUpload, FormCard, BackButton, FormError, FormSubmitButton, HackatimeSelect } from '$lib/components/form';
 
 	type ProjectType = components['schemas']['CreateProjectDto']['projectType'];
 
@@ -16,7 +16,7 @@
 		{ label: 'Cross-Platform Playable', value: 'cross_platform_playable' },
 	];
 
-	const projectId = $derived($page.params.id);
+	const projectId = $derived(page.params.id);
 
 	let loading = $state(true);
 	let title = $state('');
@@ -29,14 +29,23 @@
 	let mediaUrl = $state<string | null>(null);
 	let mediaPreview = $state<string | null>(null);
 
+	let allHackatimeProjects = $state<{ name: string; total_seconds?: number }[]>([]);
+	let selectedHackatimeNames = $state<Set<string>>(new Set());
+	let hackatimeLoading = $state(true);
+
 	async function fetchProject(id: string) {
 		loading = true;
+		hackatimeLoading = true;
 		errorMsg = null;
-		const { data } = await api.GET('/api/projects/auth/{id}', {
-			params: { path: { id: parseInt(id) } }
-		});
-		if (data) {
-			const p = data as any;
+
+		const [projectRes, allHackatimeRes, linkedHackatimeRes] = await Promise.all([
+			api.GET('/api/projects/auth/{id}', { params: { path: { id: parseInt(id) } } }),
+			api.GET('/api/hackatime/projects/all'),
+			api.GET('/api/projects/auth/{id}/hackatime-projects', { params: { path: { id: parseInt(id) } } })
+		]);
+
+		if (projectRes.data) {
+			const p = projectRes.data as any;
 			title = p.projectTitle ?? '';
 			projectType = p.projectType ?? 'web_playable';
 			description = p.description ?? '';
@@ -47,12 +56,32 @@
 		} else {
 			errorMsg = 'Failed to load project';
 		}
+
+		if (allHackatimeRes.data) {
+			allHackatimeProjects = allHackatimeRes.data.projects;
+		}
+
+		if (linkedHackatimeRes.data) {
+			selectedHackatimeNames = new Set(linkedHackatimeRes.data.hackatimeProjects ?? []);
+		}
+
 		loading = false;
+		hackatimeLoading = false;
 	}
 
 	$effect(() => {
 		if (projectId) fetchProject(projectId);
 	});
+
+	function toggleHackatimeProject(name: string) {
+		const next = new Set(selectedHackatimeNames);
+		if (next.has(name)) {
+			next.delete(name);
+		} else {
+			next.add(name);
+		}
+		selectedHackatimeNames = next;
+	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
@@ -69,18 +98,24 @@
 		submitting = true;
 		errorMsg = null;
 
-		const { data } = await api.PUT('/api/projects/auth/{id}', {
-			params: { path: { id: Number(projectId) } },
-			body: {
-				projectTitle: title.trim(),
-				description: description.trim(),
-				playableUrl: demoUrl.trim() || undefined,
-				repoUrl: codeUrl.trim() || undefined,
-				screenshotUrl: mediaUrl || undefined,
-			},
-		});
+		const [projectRes] = await Promise.all([
+			api.PUT('/api/projects/auth/{id}', {
+				params: { path: { id: Number(projectId) } },
+				body: {
+					projectTitle: title.trim(),
+					description: description.trim(),
+					playableUrl: demoUrl.trim() || undefined,
+					repoUrl: codeUrl.trim() || undefined,
+					screenshotUrl: mediaUrl || undefined,
+				},
+			}),
+			api.PUT('/api/projects/auth/{id}/hackatime-projects', {
+				params: { path: { id: Number(projectId) } },
+				body: { projectNames: Array.from(selectedHackatimeNames) },
+			}),
+		]);
 
-		if (data) {
+		if (projectRes.data) {
 			goto(`/app/projects/${projectId}`);
 		} else {
 			errorMsg = 'Failed to update project. Please try again.';
@@ -116,14 +151,12 @@
 				<div class="flex-1 flex flex-col gap-2 min-w-0">
 					<FormField label="Demo URL" id="demo-url" type="url" placeholder="https://username.itch.io/mygame" bind:value={demoUrl} />
 					<FormField label="Code URL" id="code-url" type="url" placeholder="https://username.itch.io/mygame" bind:value={codeUrl} />
-					<FormField label="Hackatime Projects" id="hackatime-link">
-						<button class="hover-juice bg-[#fc5b3c] border-2 border-black rounded-lg px-4 py-2 w-full flex items-center justify-between cursor-pointer font-bricolage text-base font-semibold text-black" type="button" onclick={() => goto(`/app/projects/${projectId}/edit/hackatime`)}>
-							<span>Link Hackatime Projects</span>
-							<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-								<path d="M4 12L12 4M12 4H5M12 4V11" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-						</button>
-					</FormField>
+					<HackatimeSelect
+						projects={allHackatimeProjects}
+						selectedNames={selectedHackatimeNames}
+						onToggle={toggleHackatimeProject}
+						loading={hackatimeLoading}
+					/>
 				</div>
 			</div>
 
@@ -134,12 +167,3 @@
 
 	<BackButton onclick={() => goto(`/app/projects/${projectId}`)} />
 </div>
-
-<style>
-	.hover-juice {
-		transition: transform var(--juice-duration) var(--juice-easing);
-	}
-	.hover-juice:hover {
-		transform: scale(var(--juice-scale));
-	}
-</style>

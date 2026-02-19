@@ -1,15 +1,14 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import heroPlaceholder from '$lib/assets/projects/hero-placeholder.png';
 	import { api } from '$lib/api';
 	import TurbulentImage from '$lib/components/TurbulentImage.svelte';
 	import { FormField, FormCard, BackButton, FormButtons, FormError } from '$lib/components/form';
 
-	const projectId = $derived($page.params.id);
+	const projectId = $derived(page.params.id);
 
 	let loading = $state(true);
-	let submitting = $state(false);
 	let errorMsg = $state<string | null>(null);
 	let heroUrl = $state<string | null>(null);
 	let projectTitle = $state('');
@@ -23,8 +22,6 @@
 	let stateField = $state('');
 	let country = $state('');
 	let zipCode = $state('');
-
-	let allFilled = $derived(!!fullName.trim() && !!email.trim());
 
 	async function fetchData(id: string) {
 		loading = true;
@@ -70,42 +67,6 @@
 			goto(`/app/projects/${projectId}`);
 		}
 	}
-
-	async function handleNext() {
-		if (!fullName.trim() || !email.trim()) {
-			errorMsg = 'Full name and email are required';
-			return;
-		}
-
-		submitting = true;
-		errorMsg = null;
-
-		const nameParts = fullName.trim().split(/\s+/);
-		const firstName = nameParts[0] ?? '';
-		const lastName = nameParts.slice(1).join(' ') ?? '';
-
-		const { data } = await api.PUT('/api/user', {
-			body: {
-				firstName,
-				lastName,
-				birthday: birthday.trim() || undefined,
-				addressLine1: addressLine1.trim() || undefined,
-				addressLine2: addressLine2.trim() || undefined,
-				city: city.trim() || undefined,
-				state: stateField.trim() || undefined,
-				country: country.trim() || undefined,
-				zipCode: zipCode.trim() || undefined,
-			},
-		});
-
-		if (data) {
-			goto(`/app/projects/${projectId}/ship/finish`);
-		} else {
-			errorMsg = 'Failed to save. Please try again.';
-		}
-
-		submitting = false;
-	}
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -120,7 +81,7 @@
 			<TurbulentImage src={heroUrl || heroPlaceholder} alt={projectTitle} inset="0 0 0 0" filterId="hero-turbulence" />
 		</div>
 
-		<FormCard title="READY TO SUBMIT?" subtitle="Verify this information is correct and fill out any blank fields.">
+		<FormCard title="READY TO SUBMIT?" subtitle="Verify this information is correct before submitting.">
 			<!-- Personal info -->
 			<div class="flex gap-4 w-full">
 				<div class="flex-1 flex flex-col gap-2 min-w-0">
@@ -150,11 +111,10 @@
 
 			<FormError message={errorMsg} />
 			<FormButtons
-				onback={() => goto(`/app/projects/${projectId}/ship/hackatime`)}
-				onnext={handleNext}
+				onback={() => goto(`/app/projects/${projectId}/ship/project`)}
+				onnext={() => goto(`/app/projects/${projectId}/ship/finish`)}
 				nextLabel="THIS IS CORRECT →"
-				loading={submitting}
-				blink={allFilled}
+				blink={true}
 			/>
 		</FormCard>
 	{/if}

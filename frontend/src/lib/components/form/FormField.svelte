@@ -30,9 +30,10 @@
 	{:else}
 		<input
 			{id}
-			class="border-2 border-black rounded-lg px-4 py-2 shadow-[2px_2px_0px_0px_black] font-bricolage text-base font-semibold w-full outline-none appearance-none {prefilled ? 'text-black/50 prefilled-field' : 'text-black bg-[#f3e8d8] placeholder:text-black/50'}"
+			class="border-2 border-black rounded-lg px-4 py-2 shadow-[2px_2px_0px_0px_black] font-bricolage text-base font-semibold w-full outline-none appearance-none {prefilled ? 'text-black/50 prefilled-field cursor-default' : 'text-black bg-[#f3e8d8] placeholder:text-black/50'}"
 			{type}
 			{placeholder}
+			readonly={prefilled}
 			bind:value
 		/>
 	{/if}

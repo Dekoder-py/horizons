@@ -7,3 +7,4 @@ export { default as BackButton } from './BackButton.svelte';
 export { default as FormButtons } from './FormButtons.svelte';
 export { default as FormError } from './FormError.svelte';
 export { default as FormSubmitButton } from './FormSubmitButton.svelte';
+export { default as HackatimeSelect } from './HackatimeSelect.svelte';
