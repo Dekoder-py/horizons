@@ -3,6 +3,7 @@
 	import HackatimeLinkButton from '$lib/components/HackatimeLinkButton.svelte';
 	import { api, type components } from '$lib/api';
 	import { FormField, FormTextarea, FormSelect, FileUpload, BackButton, FormError, FormSubmitButton } from '$lib/components/form';
+	import { invalidateAllProjectCaches } from '$lib/store/projectDetailCache';
 
 	type ProjectType = components['schemas']['CreateProjectDto']['projectType'];
 
@@ -48,6 +49,8 @@
 		});
 
 		if (data) {
+			// Invalidate all caches since we created a new project
+			invalidateAllProjectCaches();
 			goto(`/app/projects/${data.projectId}`);
 		} else {
 			errorMsg = 'Failed to create project. Please try again.';

@@ -6,27 +6,34 @@
 	import NavigationHint from '$lib/components/NavigationHint.svelte';
 	import TurbulentImage from '$lib/components/TurbulentImage.svelte';
 	import { createListNav } from '$lib/nav/wasd.svelte';
-	import { api, type components } from '$lib/api';
+	import { projectsStore, fetchProjects } from '$lib/store/projectCache';
+	import { preloadProjectDetail } from '$lib/store/projectDetailCache';
+	import type { components } from '$lib/api';
 
 	type ProjectResponse = components['schemas']['ProjectResponse'];
 
-	let projects = $state<ProjectResponse[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
+	let projectState = $state({ projects: [], loading: true, error: null });
+	let unsubscribe: (() => void) | null = null;
 
-	async function fetchProjects() {
-		loading = true;
-		error = null;
-		const { data, error: err } = await api.GET('/api/projects/auth');
-		if (data) {
-			projects = (data as ProjectResponse[]) ?? [];
-		} else {
-			error = 'Failed to load projects';
-		}
-		loading = false;
-	}
+	$effect(() => {
+		// Subscribe to store updates
+		unsubscribe = projectsStore.subscribe(state => {
+			projectState = state;
+		});
 
-	fetchProjects();
+		// Fetch projects on mount
+		fetchProjects().catch(() => {
+			// Error is already in store
+		});
+
+		return () => {
+			unsubscribe?.();
+		};
+	});
+
+	let projects = $derived(projectState.projects);
+	let loading = $derived(projectState.loading);
+	let error = $derived(projectState.error);
 
 	let scrollOffset = $state(0);
 	let listEl: HTMLDivElement;
@@ -80,6 +87,42 @@
 			? null
 			: projects[nav.selectedIndex]
 	);
+
+	// Helper to preload route chunks
+	function preloadRoute(route: string) {
+		if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+			requestIdleCallback(() => {
+				const link = document.createElement('link');
+				link.rel = 'prefetch';
+				link.href = route;
+				document.head.appendChild(link);
+			});
+		}
+	}
+
+	// Preload selected project details and routes
+	$effect(() => {
+		if (selectedProject?.projectId) {
+			preloadProjectDetail(selectedProject.projectId);
+			// Preload routes for selected project
+			preloadRoute(`/app/projects/${selectedProject.projectId}/edit`);
+			preloadRoute(`/app/projects/${selectedProject.projectId}/ship/presubmit`);
+		}
+	});
+
+	// Preload all projects in background
+	$effect(() => {
+		if (projects.length > 0) {
+			// Stagger preloading to avoid network congestion
+			projects.forEach((project, index) => {
+				setTimeout(() => {
+					if (project.projectId) {
+						preloadProjectDetail(project.projectId);
+					}
+				}, index * 200); // 200ms between preloads
+			});
+		}
+	});
 </script>
 
 <svelte:window onkeydown={nav.handleKeydown} onwheel={nav.handleWheel} />
