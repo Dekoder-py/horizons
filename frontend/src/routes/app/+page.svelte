@@ -11,6 +11,14 @@
 	import { createGridNav } from '$lib/nav/wasd.svelte';
     import { EXIT_DURATION } from '$lib';
 
+	const phrases = [
+		"OH YEAH. IT'S ALL COMING TOGETHER",
+		"ITS! TIME! TO! COOK!",
+		"HACKCLUB HORIZONS 4EVER",
+		"IN EVERY CONTINENT(DON'T TELL ANTARCTICA)",
+	];
+	const headerText = phrases[Math.floor(Math.random() * phrases.length)];
+
 	let disableAnimations = false;
 	let hideCirc = $state(page.url.searchParams.has('noanimate') || disableAnimations);
 
@@ -74,7 +82,7 @@
 				<img src={logoSvg} alt="Horizon" class="w-full h-full block" />
 			</div>
 			<p class="font-cook text-[32px] font-semibold text-black m-0 whitespace-nowrap">
-				<TextWave text="OH YEAH. IT'S ALL COMING TOGETHER" disabled={disableAnimations} />
+				<TextWave text={headerText} disabled={disableAnimations} />
 			</p>
 		</div>
 
