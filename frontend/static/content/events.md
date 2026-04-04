@@ -12,22 +12,21 @@ Come join us for our first lock in call of the event! Discuss project ideas, ask
 
 ## Kickoff call (#1!)
 ```yaml
-Start: 2026-04-08T17:00:00+00:00
-End: 2026-04-08T20:00:00+00:00
+Start: 2026-04-08T21:00:00+00:00
+End: 2026-04-08T22:00:00+00:00
 JoinInfo: "[Sign up on the Horizons dashboard](/app)"
 Tagline: "Learn more about Horizons!"
 ```
-
-DATE NOT FINAL.
+Learn more about Horizons, ask questions, and more!
 
 ## Kickoff call (#2!)
 ```yaml
-Start: 2026-04-08T17:00:00+00:00
-End: 2026-04-05T20:00:00+00:00
+Start: 2026-04-08T23:00:00.000-12:00
+End: 2026-04-08T24:00:00.000-12:00
 JoinInfo: "[Sign up on the Horizons dashboard](/app)"
 Tagline: "Learn more about Horizons!"
 ```
-DATE NOT FINAL.
+Learn more about Horizons, ask questions, and more!
 
 ## Show and tell!(1)
 ```yaml
@@ -37,7 +36,8 @@ Tagline: "Show off what you've been working on"
 JoinInfo: "[Join the huddle in #horizons!](https://hackclub.enterprise.slack.com/archives/C0AGKQ6K476)"
 ```
 Come show off what you've been working on! Get some feedback!
-lock in call afterwards tentative on if i can get someone to commit to it
+Stay tuned for a potential lock in call afterwards!
+
 
 
 ## Orion Jam!
@@ -85,5 +85,14 @@ End: 2026-04-16T20:00:00+00:00
 Tagline: "Show off what youve been working on"
 ```
 Come show off what youve been working on! Get some feedback!
-lock in call afterwards tentative on if i can get someone to commit to it
+Stay tuned for a potential lock in call afterwards!
 
+
+
+## Jackbox Night
+```yaml
+Start: 2026-04-18T00:00:00+00:00
+End: 2026-04-18T02:00:00+00:00
+Tagline: "Show off what youve been working on"
+```
+Come play some party games!
