@@ -167,7 +167,7 @@
 							</div>
 							<div class="card-text z-10">
 								<p class="font-cook text-[40px] font-semibold text-black m-0">PROJECTS</p>
-								<p class="font-bricolage text-[20px] font-semibold text-black m-0 tracking-[0.24px]">
+								<p class="font-bricolage text-[24px] font-semibold text-black m-0 tracking-[0.24px]">
 									CREATE AND SHIP YOUR PROJECTS
 								</p>
 							</div>
@@ -191,7 +191,7 @@
 							</div>
 							<div class="card-text z-10">
 								<p class="font-cook text-[40px] font-semibold text-black m-0">EVENTS</p>
-								<p class="font-bricolage text-[20px] font-semibold text-black m-0 tracking-[0.24px]">
+								<p class="font-bricolage text-[24px] font-semibold text-black m-0 tracking-[0.24px]">
 									CHECK OUT HORIZONS EVENTS!
 								</p>
 							</div>

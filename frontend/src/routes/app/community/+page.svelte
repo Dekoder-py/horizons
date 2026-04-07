@@ -188,13 +188,13 @@
 <div class="page-wrap">
 	<div class="page-content">
 		<!-- Back button (in flow) -->
-		<button class="back-btn fly-left" class:entered class:exiting={navigating} style="--fly-delay: 0ms;" onclick={goBack}>
+		<button class="back-btn fly-top" class:entered class:exiting={navigating} style="--fly-delay: 0ms; --fly-exit-delay: 150ms;" onclick={goBack}>
 			<InputPrompt type="ESC" />
 			<span class="font-cook text-2xl font-semibold text-black">BACK</span>
 		</button>
 
 		<!-- Main Content Area -->
-		<div class="content-area fly-left" class:entered class:exiting={navigating} style="--fly-delay: 150ms;">
+		<div class="content-area fly-top" class:entered class:exiting={navigating} style="--fly-delay: 150ms; --fly-exit-delay: 0ms;">
 			<!-- Left Panel: Selected Event Detail -->
 			<div class="card detail-panel">
 				{#if selectedEvent}
@@ -485,16 +485,16 @@
 	}
 
 	/* Animations */
-	.fly-left {
-		transform: translateX(-120vw);
+	.fly-top {
+		transform: translateX(120vw);
 	}
-	.fly-left.entered {
+	.fly-top.entered {
 		transform: translateX(0);
 		transition: transform var(--enter-duration) var(--enter-easing) var(--fly-delay, 0ms);
 	}
-	.fly-left.exiting {
-		transform: translateX(-120vw);
-		transition: transform var(--exit-duration) var(--exit-easing);
+	.fly-top.exiting {
+		transform: translateX(120vw);
+		transition: transform var(--exit-duration) var(--exit-easing) var(--fly-exit-delay, 0ms);
 	}
 
 	@keyframes fly-out-bottom {
