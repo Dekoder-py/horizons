@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -8,6 +13,7 @@ import { RedisService } from '../redis.service';
 import { randomBytes } from 'crypto';
 import { PosthogService } from '../posthog/posthog.service';
 import { AirtableService } from '../airtable/airtable.service';
+import { FraudReviewService } from '../fraud-review/fraud-review.service';
 
 @Injectable()
 export class ProjectsService {
@@ -16,15 +22,20 @@ export class ProjectsService {
     private redis: RedisService,
     private posthog: PosthogService,
     private airtableService: AirtableService,
+    private fraudReviewService: FraudReviewService,
   ) {}
 
-  private excludeAdminFields<T extends { hoursJustification?: any; isFraud?: any }>(obj: T): Omit<T, 'hoursJustification' | 'isFraud'> {
+  private excludeAdminFields<
+    T extends { hoursJustification?: any; isFraud?: any },
+  >(obj: T): Omit<T, 'hoursJustification' | 'isFraud'> {
     const { hoursJustification, isFraud, ...rest } = obj;
     return rest;
   }
 
-  private excludeAdminFieldsFromArray<T extends { hoursJustification?: any; isFraud?: any }>(arr: T[]): Omit<T, 'hoursJustification' | 'isFraud'>[] {
-    return arr.map(item => this.excludeAdminFields(item));
+  private excludeAdminFieldsFromArray<
+    T extends { hoursJustification?: any; isFraud?: any },
+  >(arr: T[]): Omit<T, 'hoursJustification' | 'isFraud'>[] {
+    return arr.map((item) => this.excludeAdminFields(item));
   }
 
   async createProject(createProjectDto: CreateProjectDto, userId: number) {
@@ -32,10 +43,16 @@ export class ProjectsService {
     const lockValue = randomBytes(16).toString('hex');
     const lockTTL = 10;
 
-    const lockAcquired = await this.redis.acquireLock(lockKey, lockValue, lockTTL);
-    
+    const lockAcquired = await this.redis.acquireLock(
+      lockKey,
+      lockValue,
+      lockTTL,
+    );
+
     if (!lockAcquired) {
-      throw new BadRequestException('Project creation already in progress. Please wait a moment and try again.');
+      throw new BadRequestException(
+        'Project creation already in progress. Please wait a moment and try again.',
+      );
     }
 
     try {
@@ -89,13 +106,23 @@ export class ProjectsService {
           },
         });
 
-        this.airtableService.syncUserEvent(project.user.email, userId, 'firstProjectCreated').catch((err) =>
-          console.error('Error syncing firstProjectCreated event to Airtable:', err),
-        );
+        this.airtableService
+          .syncUserEvent(project.user.email, userId, 'firstProjectCreated')
+          .catch((err) =>
+            console.error(
+              'Error syncing firstProjectCreated event to Airtable:',
+              err,
+            ),
+          );
 
-        this.airtableService.syncUserEvent(project.user.email, userId, 'onboardingCompleted').catch((err) =>
-          console.error('Error syncing onboardingCompleted event to Airtable:', err),
-        );
+        this.airtableService
+          .syncUserEvent(project.user.email, userId, 'onboardingCompleted')
+          .catch((err) =>
+            console.error(
+              'Error syncing onboardingCompleted event to Airtable:',
+              err,
+            ),
+          );
       }
 
       return this.excludeAdminFields(project);
@@ -142,9 +169,12 @@ export class ProjectsService {
     return this.excludeAdminFields(project);
   }
 
-  async createSubmission(createSubmissionDto: CreateSubmissionDto, userId: number) {
+  async createSubmission(
+    createSubmissionDto: CreateSubmissionDto,
+    userId: number,
+  ) {
     const projectId = createSubmissionDto.projectId;
-    
+
     // Get project with user data for validation
     const project = await this.prisma.project.findUnique({
       where: { projectId },
@@ -166,17 +196,29 @@ export class ProjectsService {
       where: { id: 'global' },
     });
     if (globalSettings?.submissionsFrozen) {
-      throw new ForbiddenException('Submissions are currently frozen. Please try again later.');
+      throw new ForbiddenException(
+        'Submissions are currently frozen. Please try again later.',
+      );
     }
 
     // Validate required user fields
     const user = project.user;
     if (!user.firstName || !user.lastName || !user.email || !user.birthday) {
-      throw new ForbiddenException('User profile incomplete. Please complete your profile first.');
+      throw new ForbiddenException(
+        'User profile incomplete. Please complete your profile first.',
+      );
     }
 
-    if (!user.addressLine1 || !user.city || !user.state || !user.country || !user.zipCode) {
-      throw new ForbiddenException('Oops! Looks like your address didn\'t get set. Please re-link your Hack Club Account.');
+    if (
+      !user.addressLine1 ||
+      !user.city ||
+      !user.state ||
+      !user.country ||
+      !user.zipCode
+    ) {
+      throw new ForbiddenException(
+        "Oops! Looks like your address didn't get set. Please re-link your Hack Club Account.",
+      );
     }
 
     if (this.calculateAge(user.birthday) >= 19) {
@@ -188,15 +230,26 @@ export class ProjectsService {
     }
 
     // Validate required project fields
-    if (!project.projectTitle || !project.description ||
-        project.nowHackatimeHours === null || project.nowHackatimeHours === undefined ||
-        !project.playableUrl || !project.repoUrl || !project.readmeUrl || !project.screenshotUrl ||
-        !project.nowHackatimeProjects || project.nowHackatimeProjects.length === 0) {
-      throw new ForbiddenException('Project incomplete. Please complete all required project fields first.');
+    if (
+      !project.projectTitle ||
+      !project.description ||
+      project.nowHackatimeHours === null ||
+      project.nowHackatimeHours === undefined ||
+      !project.playableUrl ||
+      !project.repoUrl ||
+      !project.readmeUrl ||
+      !project.screenshotUrl ||
+      !project.nowHackatimeProjects ||
+      project.nowHackatimeProjects.length === 0
+    ) {
+      throw new ForbiddenException(
+        'Project incomplete. Please complete all required project fields first.',
+      );
     }
 
     const hackatimeBaseUrl =
-      process.env.HACKATIME_ADMIN_API_URL || 'https://hackatime.hackclub.com/api/admin/v1';
+      process.env.HACKATIME_ADMIN_API_URL ||
+      'https://hackatime.hackclub.com/api/admin/v1';
     const hackatimeApiKey = process.env.HACKATIME_API_KEY;
     const { projectsMap } = await this.fetchHackatimeProjectsData(
       user.hackatimeAccount,
@@ -241,7 +294,9 @@ export class ProjectsService {
 
     this.posthog.capture({
       distinctId: String(userId),
-      event: isResubmission ? 'project_resubmitted_backend' : 'project_submitted_backend',
+      event: isResubmission
+        ? 'project_resubmitted_backend'
+        : 'project_submitted_backend',
       properties: {
         projectId,
         projectType: project.projectType,
@@ -251,10 +306,15 @@ export class ProjectsService {
     });
 
     if (!isResubmission) {
-      this.airtableService.syncUserEvent(project.user.email, userId, 'firstSubmit').catch((err) =>
-        console.error('Error syncing firstSubmit event to Airtable:', err),
-      );
+      this.airtableService
+        .syncUserEvent(project.user.email, userId, 'firstSubmit')
+        .catch((err) =>
+          console.error('Error syncing firstSubmit event to Airtable:', err),
+        );
     }
+
+    // Submit to fraud review in the background — does not block the response
+    this.fraudReviewService.submitAndPersist(projectId).catch(() => {});
 
     return submission;
   }
@@ -280,7 +340,11 @@ export class ProjectsService {
     return submissions;
   }
 
-  async updateProject(projectId: number, updateProjectDto: UpdateProjectDto, userId: number) {
+  async updateProject(
+    projectId: number,
+    updateProjectDto: UpdateProjectDto,
+    userId: number,
+  ) {
     const project = await this.prisma.project.findUnique({
       where: { projectId },
     });
@@ -334,7 +398,11 @@ export class ProjectsService {
     };
   }
 
-  async updateHackatimeProjects(projectId: number, updateHackatimeProjectsDto: UpdateHackatimeProjectsDto, userId: number) {
+  async updateHackatimeProjects(
+    projectId: number,
+    updateHackatimeProjectsDto: UpdateHackatimeProjectsDto,
+    userId: number,
+  ) {
     const project = await this.prisma.project.findUnique({
       where: { projectId },
       include: {
@@ -356,17 +424,21 @@ export class ProjectsService {
     }
 
     const hackatimeBaseUrl =
-      process.env.HACKATIME_ADMIN_API_URL || 'https://hackatime.hackclub.com/api/admin/v1';
+      process.env.HACKATIME_ADMIN_API_URL ||
+      'https://hackatime.hackclub.com/api/admin/v1';
     const hackatimeApiKey = process.env.HACKATIME_API_KEY;
-    const { availableProjectNames, projectsMap } = await this.fetchHackatimeProjectsData(
-      project.user.hackatimeAccount,
-      hackatimeBaseUrl,
-      hackatimeApiKey,
-    );
+    const { availableProjectNames, projectsMap } =
+      await this.fetchHackatimeProjectsData(
+        project.user.hackatimeAccount,
+        hackatimeBaseUrl,
+        hackatimeApiKey,
+      );
 
     for (const projectName of updateHackatimeProjectsDto.projectNames) {
       if (!availableProjectNames.has(projectName)) {
-        throw new BadRequestException(`Project "${projectName}" is not a valid hackatime project`);
+        throw new BadRequestException(
+          `Project "${projectName}" is not a valid hackatime project`,
+        );
       }
     }
 
@@ -382,29 +454,30 @@ export class ProjectsService {
       where: {
         userId: userId,
         NOT: {
-          projectId: { equals: projectId }
-        }
+          projectId: { equals: projectId },
+        },
       },
       select: {
         nowHackatimeProjects: true,
-      },      
+      },
     });
 
     const linkedByOthers = new Set<string>();
-    allLinkedProjects.forEach(p => {
+    allLinkedProjects.forEach((p) => {
       if (p.nowHackatimeProjects) {
-        p.nowHackatimeProjects.forEach(name => linkedByOthers.add(name));
+        p.nowHackatimeProjects.forEach((name) => linkedByOthers.add(name));
       }
     });
 
     const currentlyLinked = project.nowHackatimeProjects || [];
-    const updatingToAlreadyLinked = updateHackatimeProjectsDto.projectNames.filter(
-      name => linkedByOthers.has(name) && !currentlyLinked.includes(name)
-    );
+    const updatingToAlreadyLinked =
+      updateHackatimeProjectsDto.projectNames.filter(
+        (name) => linkedByOthers.has(name) && !currentlyLinked.includes(name),
+      );
 
     if (updatingToAlreadyLinked.length > 0) {
       throw new BadRequestException(
-        `Project(s) ${updatingToAlreadyLinked.join(', ')} are already linked to another project`
+        `Project(s) ${updatingToAlreadyLinked.join(', ')} are already linked to another project`,
       );
     }
 
@@ -466,7 +539,8 @@ export class ProjectsService {
     }
 
     const hackatimeBaseUrl =
-      process.env.HACKATIME_ADMIN_API_URL || 'https://hackatime.hackclub.com/api/admin/v1';
+      process.env.HACKATIME_ADMIN_API_URL ||
+      'https://hackatime.hackclub.com/api/admin/v1';
     const hackatimeApiKey = process.env.HACKATIME_API_KEY;
 
     const durationsMap = await this.fetchHackatimeProjectDurationsAfterDate(
@@ -506,10 +580,13 @@ export class ProjectsService {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    const response = await fetch(`${baseUrl}/user/projects?id=${hackatimeAccount}`, {
-      method: 'GET',
-      headers,
-    });
+    const response = await fetch(
+      `${baseUrl}/user/projects?id=${hackatimeAccount}`,
+      {
+        method: 'GET',
+        headers,
+      },
+    );
 
     if (!response.ok) {
       throw new BadRequestException('Failed to fetch hackatime projects');
@@ -532,7 +609,8 @@ export class ProjectsService {
 
       if (typeof name === 'string') {
         availableProjectNames.add(name);
-        const duration = typeof entry?.total_duration === 'number' ? entry.total_duration : 0;
+        const duration =
+          typeof entry?.total_duration === 'number' ? entry.total_duration : 0;
         projectsMap.set(name, duration);
       }
     };
@@ -553,7 +631,9 @@ export class ProjectsService {
     projectNames: string[],
     baseUrl: string,
     apiKey?: string,
-    cutoffDate: Date = new Date(process.env.HACKATIME_CUTOFF_DATE || '2025-10-10T00:00:00Z'),
+    cutoffDate: Date = new Date(
+      process.env.HACKATIME_CUTOFF_DATE || '2025-10-10T00:00:00Z',
+    ),
   ): Promise<Map<string, number>> {
     const startDate = cutoffDate.toISOString().split('T')[0];
     const uri = `https://hackatime.hackclub.com/api/v1/users/${hackatimeAccount}/stats?features=projects&start_date=${startDate}`;
@@ -581,14 +661,15 @@ export class ProjectsService {
       if (response.ok) {
         const responseData = await response.json();
         const projects = responseData?.data?.projects;
-        
+
         if (projects && Array.isArray(projects)) {
           for (const project of projects) {
             const name = project?.name;
             if (typeof name === 'string' && projectNames.includes(name)) {
-              const duration = typeof project?.total_seconds === 'number' 
-                ? project.total_seconds 
-                : 0;
+              const duration =
+                typeof project?.total_seconds === 'number'
+                  ? project.total_seconds
+                  : 0;
               durationsMap.set(name, duration);
             }
           }
@@ -609,14 +690,17 @@ export class ProjectsService {
     apiKey?: string,
   ) {
     if (hackatimeAccount && baseUrl) {
-      const cutoffDate = new Date(process.env.HACKATIME_CUTOFF_DATE || '2025-10-10T00:00:00Z');
-      const filteredDurations = await this.fetchHackatimeProjectDurationsAfterDate(
-        hackatimeAccount,
-        projectNames,
-        baseUrl,
-        apiKey,
-        cutoffDate,
+      const cutoffDate = new Date(
+        process.env.HACKATIME_CUTOFF_DATE || '2025-10-10T00:00:00Z',
       );
+      const filteredDurations =
+        await this.fetchHackatimeProjectDurationsAfterDate(
+          hackatimeAccount,
+          projectNames,
+          baseUrl,
+          apiKey,
+          cutoffDate,
+        );
 
       let totalSeconds = 0;
       for (const name of projectNames) {
@@ -638,7 +722,10 @@ export class ProjectsService {
     const today = new Date();
     let age = today.getFullYear() - birthday.getFullYear();
     const monthDiff = today.getMonth() - birthday.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthday.getDate())
+    ) {
       age -= 1;
     }
     return age;
@@ -698,8 +785,12 @@ export class ProjectsService {
           approved: Math.round(approvedHours * 10) / 10,
         };
       })
-      .filter((entry) => (sortBy === 'hours' ? entry.hours > 0 : entry.approved > 0))
-      .sort((a, b) => (sortBy === 'hours' ? b.hours - a.hours : b.approved - a.approved))
+      .filter((entry) =>
+        sortBy === 'hours' ? entry.hours > 0 : entry.approved > 0,
+      )
+      .sort((a, b) =>
+        sortBy === 'hours' ? b.hours - a.hours : b.approved - a.approved,
+      )
       .slice(0, 10);
 
     return leaderboard;

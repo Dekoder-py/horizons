@@ -1,8 +1,23 @@
-import { Controller, Get, Put, Post, Body, Param, UseGuards, Req, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Put,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Req,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { ApiOkResponse } from '@nestjs/swagger';
 import { Request } from 'express';
 import { ReviewerService } from './reviewer.service';
-import { ReviewSubmissionDto, QuickApproveDto, SaveNoteDto, SaveChecklistDto } from './dto/review-submission.dto';
+import {
+  ReviewSubmissionDto,
+  QuickApproveDto,
+  SaveNoteDto,
+  SaveChecklistDto,
+} from './dto/review-submission.dto';
 import {
   QueueItemResponse,
   SubmissionDetailResponse,
@@ -19,6 +34,12 @@ import { Role } from '../auth/enums/role.enum';
 @Roles(Role.Reviewer, Role.Admin)
 export class ReviewerController {
   constructor(private reviewerService: ReviewerService) {}
+
+  /** Poll the fraud review platform and update pass/fail status for all pending projects */
+  @Post('fraud-review/refresh')
+  async refreshFraudStatuses() {
+    return this.reviewerService.refreshFraudStatuses();
+  }
 
   /** Get the pending submissions queue with scoped data */
   @Get('queue')
@@ -53,7 +74,11 @@ export class ReviewerController {
     @Body() dto: QuickApproveDto,
     @Req() req: Request,
   ) {
-    return this.reviewerService.quickApproveSubmission(id, req.user.userId, dto);
+    return this.reviewerService.quickApproveSubmission(
+      id,
+      req.user.userId,
+      dto,
+    );
   }
 
   /** Get the shared note for a project */

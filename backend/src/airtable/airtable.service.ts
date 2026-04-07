@@ -4,9 +4,12 @@ import { PrismaService } from '../prisma.service';
 @Injectable()
 export class AirtableService {
   constructor(private prisma: PrismaService) {}
+  private readonly pendingPreAuthSyncs = new Map<string, { promise: Promise<void>; createdAt: number }>();
+  private static readonly PENDING_SYNC_TTL_MS = 30_000;
   private readonly AIRTABLE_API_KEY = process.env.YSWS_AIRTABLE_API_KEY;
   private readonly YSWS_BASE_ID = process.env.YSWS_BASE_ID;
-  private readonly APPROVED_PROJECTS_TABLE_ID = process.env.YSWS_APPROVED_PROJECTS_TABLE_ID;
+  private readonly APPROVED_PROJECTS_TABLE_ID =
+    process.env.YSWS_APPROVED_PROJECTS_TABLE_ID;
   private readonly USERS_TABLE_ID = process.env.YSWS_USERS_TABLE_ID;
 
   // async createYSWSSubmission(data: {
@@ -127,11 +130,11 @@ export class AirtableService {
 
   //   try {
   //     const fields: any = {};
-      
+
   //     if (data.approvedHours !== undefined) {
   //       fields['Optional - Override Hours Spent'] = data.approvedHours;
   //     }
-      
+
   //     if (data.hoursJustification !== undefined) {
   //       fields['Optional - Override Hours Spent Justification'] = data.hoursJustification;
   //     }
@@ -170,7 +173,9 @@ export class AirtableService {
   //   }
   // }
 
-  private async findUserRecord(email: string): Promise<{ id: string; fields: Record<string, any> } | null> {
+  private async findUserRecord(
+    email: string,
+  ): Promise<{ id: string; fields: Record<string, any> } | null> {
     if (!this.AIRTABLE_API_KEY || !this.YSWS_BASE_ID || !this.USERS_TABLE_ID) {
       return null;
     }
@@ -194,9 +199,94 @@ export class AirtableService {
     return record ? { id: record.id, fields: record.fields } : null;
   }
 
-  async syncUserEvent(email: string, userId: number, event: 'signUp' | 'firstProjectCreated' | 'firstSubmit' | 'onboardingCompleted', dateOverride?: string): Promise<void> {
+  private cleanExpiredPendingSyncs(): void {
+    const now = Date.now();
+    for (const [email, entry] of this.pendingPreAuthSyncs) {
+      if (now - entry.createdAt > AirtableService.PENDING_SYNC_TTL_MS) {
+        this.pendingPreAuthSyncs.delete(email);
+      }
+    }
+  }
+
+  async syncPreAuthSignUp(email: string): Promise<void> {
+    this.cleanExpiredPendingSyncs();
+    const promise = this._syncPreAuthSignUp(email);
+    this.pendingPreAuthSyncs.set(email, { promise, createdAt: Date.now() });
+    promise.finally(() => this.pendingPreAuthSyncs.delete(email));
+    return promise;
+  }
+
+  private async _syncPreAuthSignUp(email: string): Promise<void> {
     if (!this.AIRTABLE_API_KEY || !this.YSWS_BASE_ID || !this.USERS_TABLE_ID) {
       return;
+    }
+
+    const fieldName = 'Loops - horizonsSignUpAt';
+    const now = new Date().toISOString().split('T')[0];
+
+    try {
+      const existingRecord = await this.findUserRecord(email);
+
+      if (existingRecord) {
+        if (!existingRecord.fields[fieldName]) {
+          await fetch(
+            `https://api.airtable.com/v0/${this.YSWS_BASE_ID}/${this.USERS_TABLE_ID}/${existingRecord.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${this.AIRTABLE_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fields: { [fieldName]: now },
+              }),
+            },
+          );
+        }
+      } else {
+        await fetch(
+          `https://api.airtable.com/v0/${this.YSWS_BASE_ID}/${this.USERS_TABLE_ID}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${this.AIRTABLE_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              records: [
+                {
+                  fields: {
+                    Email: email,
+                    [fieldName]: now,
+                  },
+                },
+              ],
+            }),
+          },
+        );
+      }
+    } catch (error) {
+      console.error('Error syncing pre-auth signUp to Airtable:', error);
+    }
+  }
+
+  async syncUserEvent(
+    email: string,
+    userId: number,
+    event:
+      | 'signUp'
+      | 'firstProjectCreated'
+      | 'firstSubmit'
+      | 'onboardingCompleted',
+    dateOverride?: string,
+  ): Promise<void> {
+    if (!this.AIRTABLE_API_KEY || !this.YSWS_BASE_ID || !this.USERS_TABLE_ID) {
+      return;
+    }
+
+    const entry = this.pendingPreAuthSyncs.get(email);
+    if (entry) {
+      await entry.promise.catch(() => {});
     }
 
     const fieldMap: Record<string, string> = {
@@ -210,6 +300,19 @@ export class AirtableService {
     const now = dateOverride || new Date().toISOString().split('T')[0];
 
     try {
+      let user = await this.prisma.user.findUnique({
+        where: { email },
+        select: { referralCode: true },
+      });
+
+      if (!user?.referralCode) {
+        user = await this.prisma.user.update({
+          where: { email },
+          data: { referralCode: userId.toString() },
+          select: { referralCode: true },
+        });
+      }
+
       let recordId: string | null = null;
       const existingRecord = await this.findUserRecord(email);
 
@@ -222,6 +325,9 @@ export class AirtableService {
         }
         if (!existingRecord.fields['Horizons User ID']) {
           fieldsToUpdate['Horizons User ID'] = userId;
+        }
+        if (user?.referralCode) {
+          fieldsToUpdate['Referral Code'] = user.referralCode;
         }
 
         if (Object.keys(fieldsToUpdate).length > 0) {
@@ -255,6 +361,9 @@ export class AirtableService {
                     Email: email,
                     'Horizons User ID': userId,
                     [fieldName]: now,
+                    ...(user?.referralCode
+                      ? { 'Referral Code': user.referralCode }
+                      : {}),
                   },
                 },
               ],
@@ -308,7 +417,6 @@ export class AirtableService {
       );
     }
 
-
     try {
       const extractGithubUsername = (repoUrl: string): string => {
         if (!repoUrl) {
@@ -318,65 +426,96 @@ export class AirtableService {
 
         const trimmedUrl = repoUrl.trim();
         if (!trimmedUrl) {
-          console.log('GitHub username extraction: repoUrl is empty after trim');
+          console.log(
+            'GitHub username extraction: repoUrl is empty after trim',
+          );
           return '';
         }
 
         try {
           const url = new URL(trimmedUrl);
-          console.log('GitHub username extraction: parsed URL', { hostname: url.hostname, pathname: url.pathname });
-          
-          if (url.hostname !== 'github.com' && !url.hostname.endsWith('.github.com')) {
-            console.log('GitHub username extraction: not a GitHub URL', url.hostname);
+          console.log('GitHub username extraction: parsed URL', {
+            hostname: url.hostname,
+            pathname: url.pathname,
+          });
+
+          if (
+            url.hostname !== 'github.com' &&
+            !url.hostname.endsWith('.github.com')
+          ) {
+            console.log(
+              'GitHub username extraction: not a GitHub URL',
+              url.hostname,
+            );
             return '';
           }
 
           const pathParts = url.pathname.split('/').filter(Boolean);
           console.log('GitHub username extraction: pathParts', pathParts);
-          
+
           if (pathParts.length === 0) {
             console.log('GitHub username extraction: no path parts');
             return '';
           }
 
           const username = pathParts[0];
-          console.log('GitHub username extraction: extracted username', username);
+          console.log(
+            'GitHub username extraction: extracted username',
+            username,
+          );
           return username;
         } catch (error) {
-          console.error('GitHub username extraction error:', error, 'for URL:', trimmedUrl);
+          console.error(
+            'GitHub username extraction error:',
+            error,
+            'for URL:',
+            trimmedUrl,
+          );
           return '';
         }
       };
 
-      console.log('Extracting GitHub username from repoUrl:', data.project.repoUrl);
-      console.log('Available URLs - playableUrl:', data.project.playableUrl, 'repoUrl:', data.project.repoUrl);
+      console.log(
+        'Extracting GitHub username from repoUrl:',
+        data.project.repoUrl,
+      );
+      console.log(
+        'Available URLs - playableUrl:',
+        data.project.playableUrl,
+        'repoUrl:',
+        data.project.repoUrl,
+      );
       const githubUsername = extractGithubUsername(data.project.repoUrl);
-      console.log('Final GitHub username:', githubUsername, 'from repoUrl:', data.project.repoUrl);
-
+      console.log(
+        'Final GitHub username:',
+        githubUsername,
+        'from repoUrl:',
+        data.project.repoUrl,
+      );
 
       const fields: any = {
         'First Name': data.user.firstName,
         'Last Name': data.user.lastName,
-        'Email': data.user.email,
-        'Birthday': data.user.birthday.toISOString().split('T')[0],
+        Email: data.user.email,
+        Birthday: data.user.birthday.toISOString().split('T')[0],
         'Address (Line 1)': data.user.addressLine1,
         'Address (Line 2)': data.user.addressLine2 || '',
-        'City': data.user.city,
+        City: data.user.city,
         'State / Province': data.user.state,
-        'Country': data.user.country,
+        Country: data.user.country,
         'ZIP / Postal Code': data.user.zipCode,
         'Playable URL': data.project.playableUrl,
         'Code URL': data.project.repoUrl,
-        'Screenshot': [
+        Screenshot: [
           {
             url: data.project.screenshotUrl,
-            filename: `screenshot-${Date.now()}.png`
-          }
+            filename: `screenshot-${Date.now()}.png`,
+          },
         ],
         'Optional - Override Hours Spent': data.project.approvedHours,
-        'Optional - Override Hours Spent Justification': data.project.hoursJustification,
+        'Optional - Override Hours Spent Justification':
+          data.project.hoursJustification,
         'Approved At': new Date().toISOString().split('T')[0],
-
       };
 
       if (githubUsername) {
@@ -435,15 +574,17 @@ export class AirtableService {
     }
   }
 
-  async updateApprovedProject(airtableRecId: string, data: {
-    playableUrl?: string;
-    repoUrl?: string;
-    screenshotUrl?: string;
-    description?: string;
-    approvedHours?: number;
-    hoursJustification?: string;
-  }): Promise<void> {
-
+  async updateApprovedProject(
+    airtableRecId: string,
+    data: {
+      playableUrl?: string;
+      repoUrl?: string;
+      screenshotUrl?: string;
+      description?: string;
+      approvedHours?: number;
+      hoursJustification?: string;
+    },
+  ): Promise<void> {
     if (!this.AIRTABLE_API_KEY) {
       throw new HttpException(
         'Airtable API key not configured for Unified YSWS',
@@ -469,7 +610,10 @@ export class AirtableService {
 
           try {
             const url = new URL(trimmedUrl);
-            if (url.hostname !== 'github.com' && !url.hostname.endsWith('.github.com')) {
+            if (
+              url.hostname !== 'github.com' &&
+              !url.hostname.endsWith('.github.com')
+            ) {
               return '';
             }
             const pathParts = url.pathname.split('/').filter(Boolean);
@@ -490,8 +634,8 @@ export class AirtableService {
         fields['Screenshot'] = [
           {
             url: data.screenshotUrl,
-            filename: `screenshot-${Date.now()}.png`
-          }
+            filename: `screenshot-${Date.now()}.png`,
+          },
         ];
       }
 
@@ -504,7 +648,8 @@ export class AirtableService {
       }
 
       if (data.hoursJustification !== undefined) {
-        fields['Optional - Override Hours Spent Justification'] = data.hoursJustification;
+        fields['Optional - Override Hours Spent Justification'] =
+          data.hoursJustification;
       }
 
       // Only make request if there are fields to update
@@ -535,7 +680,9 @@ export class AirtableService {
         );
       }
 
-      console.log(`Successfully updated Airtable record ${airtableRecId} in Approved Projects table`);
+      console.log(
+        `Successfully updated Airtable record ${airtableRecId} in Approved Projects table`,
+      );
     } catch (error) {
       console.error('Error updating Approved Projects record:', error);
       if (error instanceof HttpException) {

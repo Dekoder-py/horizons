@@ -1,9 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { ReviewSubmissionDto, QuickApproveDto, SaveNoteDto, SaveChecklistDto } from './dto/review-submission.dto';
+import {
+  ReviewSubmissionDto,
+  QuickApproveDto,
+  SaveNoteDto,
+  SaveChecklistDto,
+} from './dto/review-submission.dto';
 import { AirtableService } from '../airtable/airtable.service';
 import { MailService } from '../mail/mail.service';
 import { SlackService } from '../slack/slack.service';
+import { FraudReviewService } from '../fraud-review/fraud-review.service';
 
 // Scoped user fields — no PII like email, address, birthday
 const SCOPED_USER_SELECT = {
@@ -21,6 +27,7 @@ export class ReviewerService {
     private airtableService: AirtableService,
     private mailService: MailService,
     private slackService: SlackService,
+    private fraudReviewService: FraudReviewService,
   ) {}
 
   /**
@@ -28,8 +35,21 @@ export class ReviewerService {
    * Returns minimal info for the queue list, not full details.
    */
   async getReviewQueue() {
+    const fraudFilterEnabled = this.fraudReviewService.isEnabled();
+
+    // Sync fraud statuses before returning the queue so newly-passed
+    // projects appear immediately when a reviewer opens the page
+    if (fraudFilterEnabled) {
+      await this.fraudReviewService.pollPendingProjects();
+    }
+
+    const fraudFilter = fraudFilterEnabled ? { joeFraudPassed: true } : {};
+
     const submissions = await this.prisma.submission.findMany({
-      where: { approvalStatus: 'pending' },
+      where: {
+        approvalStatus: 'pending',
+        project: fraudFilter,
+      },
       include: {
         project: {
           select: {
@@ -88,7 +108,9 @@ export class ReviewerService {
     }
 
     // Resolve reviewer names from audit logs
-    const allAuditLogs = submission.project.submissions.flatMap((s) => s.auditLogs);
+    const allAuditLogs = submission.project.submissions.flatMap(
+      (s) => s.auditLogs,
+    );
     const reviewerIds = [...new Set(allAuditLogs.map((l) => l.adminId))];
     const reviewers = await this.prisma.user.findMany({
       where: { userId: { in: reviewerIds } },
@@ -97,7 +119,10 @@ export class ReviewerService {
     const reviewerMap = new Map(reviewers.map((r) => [r.userId, r]));
 
     // Build timeline from all submissions on this project
-    const timeline = this.buildTimeline(submission.project.submissions, reviewerMap);
+    const timeline = this.buildTimeline(
+      submission.project.submissions,
+      reviewerMap,
+    );
 
     return {
       submissionId: submission.submissionId,
@@ -130,7 +155,11 @@ export class ReviewerService {
    * Supports re-review (changing a previously reviewed submission).
    * Conditional email (only when sendEmail is explicitly true), always sends Slack on status change.
    */
-  async reviewSubmission(submissionId: number, dto: ReviewSubmissionDto, reviewerId: number) {
+  async reviewSubmission(
+    submissionId: number,
+    dto: ReviewSubmissionDto,
+    reviewerId: number,
+  ) {
     const submission = await this.prisma.submission.findUnique({
       where: { submissionId },
       include: {
@@ -164,7 +193,12 @@ export class ReviewerService {
         project: {
           include: {
             user: {
-              select: { userId: true, firstName: true, lastName: true, email: true },
+              select: {
+                userId: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
             },
           },
         },
@@ -174,11 +208,16 @@ export class ReviewerService {
     // Audit log — distinguish status-change reviews from field-only updates
     const isReview = dto.approvalStatus !== undefined;
     const auditChanges: Record<string, unknown> = {};
-    if (dto.approvalStatus !== undefined) auditChanges.previousStatus = submission.approvalStatus;
-    if (dto.approvedHours !== undefined) auditChanges.approvedHours = dto.approvedHours;
-    if (dto.userFeedback !== undefined) auditChanges.userFeedback = dto.userFeedback;
-    if (dto.hoursJustification !== undefined) auditChanges.hoursJustification = dto.hoursJustification;
-    if (dto.adminComment !== undefined) auditChanges.adminComment = dto.adminComment;
+    if (dto.approvalStatus !== undefined)
+      auditChanges.previousStatus = submission.approvalStatus;
+    if (dto.approvedHours !== undefined)
+      auditChanges.approvedHours = dto.approvedHours;
+    if (dto.userFeedback !== undefined)
+      auditChanges.userFeedback = dto.userFeedback;
+    if (dto.hoursJustification !== undefined)
+      auditChanges.hoursJustification = dto.hoursJustification;
+    if (dto.adminComment !== undefined)
+      auditChanges.adminComment = dto.adminComment;
 
     await this.prisma.submissionAuditLog.create({
       data: {
@@ -191,10 +230,15 @@ export class ReviewerService {
       },
     });
 
-    const isNewApproval = dto.approvalStatus === 'approved' && submission.approvalStatus !== 'approved';
+    const isNewApproval =
+      dto.approvalStatus === 'approved' &&
+      submission.approvalStatus !== 'approved';
     if (isNewApproval) {
       await this.syncAirtable(submission, dto);
-    } else if (submission.approvalStatus === 'approved' && submission.airtableRecId) {
+    } else if (
+      submission.approvalStatus === 'approved' &&
+      submission.airtableRecId
+    ) {
       await this.updateAirtableRecord(submission, dto);
     }
 
@@ -205,7 +249,11 @@ export class ReviewerService {
       await this.sendNotifications(updatedSubmission, dto);
     }
 
-    return { success: true, submissionId, status: dto.approvalStatus ?? submission.approvalStatus };
+    return {
+      success: true,
+      submissionId,
+      status: dto.approvalStatus ?? submission.approvalStatus,
+    };
   }
 
   /**
@@ -248,7 +296,12 @@ export class ReviewerService {
         project: {
           include: {
             user: {
-              select: { userId: true, firstName: true, lastName: true, email: true },
+              select: {
+                userId: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
             },
           },
         },
@@ -307,13 +360,22 @@ export class ReviewerService {
 
   /** Sync approved hours, justification, adminComment, and submission data to the project table. */
   private async syncProjectData(
-    submission: { projectId: number; playableUrl: string | null; repoUrl: string | null; screenshotUrl: string | null; description: string | null },
+    submission: {
+      projectId: number;
+      playableUrl: string | null;
+      repoUrl: string | null;
+      screenshotUrl: string | null;
+      description: string | null;
+    },
     dto: ReviewSubmissionDto,
   ) {
     const projectUpdateData: Record<string, unknown> = {};
-    if (dto.approvedHours !== undefined) projectUpdateData.approvedHours = dto.approvedHours;
-    if (dto.hoursJustification !== undefined) projectUpdateData.hoursJustification = dto.hoursJustification;
-    if (dto.adminComment !== undefined) projectUpdateData.adminComment = dto.adminComment;
+    if (dto.approvedHours !== undefined)
+      projectUpdateData.approvedHours = dto.approvedHours;
+    if (dto.hoursJustification !== undefined)
+      projectUpdateData.hoursJustification = dto.hoursJustification;
+    if (dto.adminComment !== undefined)
+      projectUpdateData.adminComment = dto.adminComment;
     if (dto.approvalStatus === 'approved') {
       projectUpdateData.playableUrl = submission.playableUrl;
       projectUpdateData.repoUrl = submission.repoUrl;
@@ -331,7 +393,22 @@ export class ReviewerService {
 
   /** Create a new Airtable record when a submission is approved. For resubmissions, hours are the delta since last approval. */
   private async syncAirtable(
-    submission: { submissionId: number; projectId: number; createdAt: Date; playableUrl: string | null; repoUrl: string | null; screenshotUrl: string | null; description: string | null; project: { playableUrl: string | null; repoUrl: string | null; screenshotUrl: string | null; description: string | null; user: any } },
+    submission: {
+      submissionId: number;
+      projectId: number;
+      createdAt: Date;
+      playableUrl: string | null;
+      repoUrl: string | null;
+      screenshotUrl: string | null;
+      description: string | null;
+      project: {
+        playableUrl: string | null;
+        repoUrl: string | null;
+        screenshotUrl: string | null;
+        description: string | null;
+        user: any;
+      };
+    },
     dto: { approvedHours?: number; hoursJustification?: string },
   ) {
     try {
@@ -353,8 +430,12 @@ export class ReviewerService {
         orderBy: { createdAt: 'desc' },
         select: { approvedHours: true },
       });
-      const previouslyApprovedHours = lastApprovedSubmission?.approvedHours || 0;
-      const deltaHours = Math.max(0, totalApprovedHours - previouslyApprovedHours);
+      const previouslyApprovedHours =
+        lastApprovedSubmission?.approvedHours || 0;
+      const deltaHours = Math.max(
+        0,
+        totalApprovedHours - previouslyApprovedHours,
+      );
 
       const approvedProjectData = {
         user: {
@@ -370,16 +451,23 @@ export class ReviewerService {
           zipCode: project.user.zipCode,
         },
         project: {
-          playableUrl: submission.playableUrl || submission.project.playableUrl || '',
+          playableUrl:
+            submission.playableUrl || submission.project.playableUrl || '',
           repoUrl: submission.repoUrl || submission.project.repoUrl || '',
-          screenshotUrl: submission.screenshotUrl || submission.project.screenshotUrl || '',
+          screenshotUrl:
+            submission.screenshotUrl || submission.project.screenshotUrl || '',
           approvedHours: deltaHours,
-          hoursJustification: project.hoursJustification || dto.hoursJustification || '',
-          description: submission.description || submission.project.description || undefined,
+          hoursJustification:
+            project.hoursJustification || dto.hoursJustification || '',
+          description:
+            submission.description ||
+            submission.project.description ||
+            undefined,
         },
       };
 
-      const airtableResult = await this.airtableService.createApprovedProject(approvedProjectData);
+      const airtableResult =
+        await this.airtableService.createApprovedProject(approvedProjectData);
       if (airtableResult.recordId) {
         await this.prisma.submission.update({
           where: { submissionId: submission.submissionId },
@@ -394,7 +482,16 @@ export class ReviewerService {
 
   /** Update an existing Airtable record when editing an already-approved submission. */
   private async updateAirtableRecord(
-    submission: { submissionId: number; projectId: number; createdAt: Date; airtableRecId: string | null; playableUrl: string | null; repoUrl: string | null; screenshotUrl: string | null; description: string | null },
+    submission: {
+      submissionId: number;
+      projectId: number;
+      createdAt: Date;
+      airtableRecId: string | null;
+      playableUrl: string | null;
+      repoUrl: string | null;
+      screenshotUrl: string | null;
+      description: string | null;
+    },
     dto: { approvedHours?: number; hoursJustification?: string },
   ) {
     if (!submission.airtableRecId) return;
@@ -412,18 +509,22 @@ export class ReviewerService {
           orderBy: { createdAt: 'desc' },
           select: { approvedHours: true },
         });
-        const previouslyApprovedHours = lastApprovedSubmission?.approvedHours || 0;
+        const previouslyApprovedHours =
+          lastApprovedSubmission?.approvedHours || 0;
         approvedHours = Math.max(0, approvedHours - previouslyApprovedHours);
       }
 
-      await this.airtableService.updateApprovedProject(submission.airtableRecId, {
-        playableUrl: submission.playableUrl || undefined,
-        repoUrl: submission.repoUrl || undefined,
-        screenshotUrl: submission.screenshotUrl || undefined,
-        description: submission.description || undefined,
-        approvedHours,
-        hoursJustification: dto.hoursJustification,
-      });
+      await this.airtableService.updateApprovedProject(
+        submission.airtableRecId,
+        {
+          playableUrl: submission.playableUrl || undefined,
+          repoUrl: submission.repoUrl || undefined,
+          screenshotUrl: submission.screenshotUrl || undefined,
+          description: submission.description || undefined,
+          approvedHours,
+          hoursJustification: dto.hoursJustification,
+        },
+      );
     } catch (error) {
       console.error('Airtable update failed:', error);
     }
@@ -431,7 +532,14 @@ export class ReviewerService {
 
   /** Send email (if explicitly requested) and Slack notification on status change. */
   private async sendNotifications(
-    updatedSubmission: { project: { projectTitle: string; projectId: number; user: { email: string } }; hoursJustification: string | null },
+    updatedSubmission: {
+      project: {
+        projectTitle: string;
+        projectId: number;
+        user: { email: string };
+      };
+      hoursJustification: string | null;
+    },
     dto: ReviewSubmissionDto,
   ) {
     if (dto.sendEmail === true) {
@@ -467,8 +575,20 @@ export class ReviewerService {
     }
   }
 
+  /**
+   * Poll the fraud review platform for all projects awaiting a decision,
+   * submit any that were missed (e.g. API was down), and update pass/fail status.
+   */
+  async refreshFraudStatuses() {
+    return this.fraudReviewService.pollPendingProjects();
+  }
+
   /** Save the adminComment field on a project or user. */
-  async saveNote(targetType: 'project' | 'user', targetId: number, dto: SaveNoteDto) {
+  async saveNote(
+    targetType: 'project' | 'user',
+    targetId: number,
+    dto: SaveNoteDto,
+  ) {
     if (targetType === 'project') {
       await this.prisma.project.update({
         where: { projectId: targetId },
@@ -534,7 +654,10 @@ export class ReviewerService {
       const birth = new Date(user.birthday);
       age = today.getFullYear() - birth.getFullYear();
       const monthDiff = today.getMonth() - birth.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      if (
+        monthDiff < 0 ||
+        (monthDiff === 0 && today.getDate() < birth.getDate())
+      ) {
         age--;
       }
     }
@@ -567,10 +690,17 @@ export class ReviewerService {
         createdAt: Date;
       }>;
     }>,
-    reviewerMap: Map<number, { userId: number; firstName: string; lastName: string }>,
+    reviewerMap: Map<
+      number,
+      { userId: number; firstName: string; lastName: string }
+    >,
   ) {
     type TimelineEntry =
-      | { type: 'submitted' | 'resubmitted'; hours: number | null; timestamp: Date }
+      | {
+          type: 'submitted' | 'resubmitted';
+          hours: number | null;
+          timestamp: Date;
+        }
       | {
           type: 'approved' | 'rejected';
           reviewerName: string;
@@ -585,7 +715,8 @@ export class ReviewerService {
 
     // Sort submissions oldest first to determine first vs re-submission
     const sorted = [...submissions].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
 
     for (let i = 0; i < sorted.length; i++) {
@@ -621,7 +752,10 @@ export class ReviewerService {
     }
 
     // Newest first
-    events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    events.sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
     return events;
   }
 }

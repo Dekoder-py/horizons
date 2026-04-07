@@ -147,8 +147,12 @@
 	function formatDateRange(start: string, end: string) {
 		const s = new Date(start);
 		const e = new Date(end);
-		const month = s.getMonth() + 1;
-		return `${month}/${s.getDate()}-${e.getDate()}`;
+		const sMonth = s.toLocaleString('default', { month: 'long' });
+		const eMonth = e.toLocaleString('default', { month: 'long' });
+		if (sMonth === eMonth) {
+			return `${sMonth} ${s.getDate()} - ${e.getDate()}`;
+		}
+		return `${sMonth} ${s.getDate()} - ${eMonth} ${e.getDate()}`;
 	}
 
 	async function completeOnboarding() {
@@ -164,7 +168,7 @@
 			step++;
 		} else {
 			await completeOnboarding();
-			goto('/app');
+			goto('/app?post-onboarding');
 		}
 	}
 
@@ -187,7 +191,7 @@
 		projectSubmitting = true;
 		projectError = null;
 
-		const { data } = await api.POST('/api/projects/auth', {
+		const { data, response } = await api.POST('/api/projects/auth', {
 			body: {
 				projectTitle: projectTitle.trim(),
 				projectType: 'web_playable',
@@ -198,9 +202,14 @@
 
 		if (data) {
 			invalidateAllProjectCaches();
-			goto(`/app/projects/${data.projectId}`);
+			goto('/app?post-onboarding');
 		} else {
-			projectError = 'Failed to create project. Please try again.';
+			let message = response.statusText || 'An unknown error occurred';
+			try {
+				const body = await response.json();
+				if (body?.message) message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
+			} catch {}
+			projectError = `Failed to create project: ${message}`;
 		}
 
 		projectSubmitting = false;
@@ -272,8 +281,8 @@
 								<p class="font-bricolage text-2xl font-medium text-black leading-normal">Fill out the following fields! You can put an existing project, or the idea for a new project.</p>
 							</div>
 							<div class="flex flex-col gap-4 w-full">
-								<FormField label="Title" id="title" placeholder="Horizons" bind:value={projectTitle} />
-								<FormTextarea label="Description" id="description" placeholder="Describe what your project does..." bind:value={projectDescription} />
+								<FormField label="Title" id="title" placeholder="Horizons" maxlength={30} bind:value={projectTitle} />
+								<FormTextarea label="Description" id="description" placeholder="Describe what your project does..." maxlength={500} bind:value={projectDescription} />
 								<div class="flex flex-col gap-1 w-full">
 									<label class="font-bricolage text-base font-semibold text-black leading-normal">Screenshot <span class="opacity-60">(optional)</span></label>
 									<FileUpload label="" hideHint bind:mediaUrl bind:mediaPreview onerror={(msg) => projectError = msg} />
@@ -324,7 +333,7 @@
 
 			{#if isEventSelectStep}
 				<div class="flex justify-between items-center">
-					<button class="font-bricolage text-base font-semibold text-black opacity-40 bg-transparent border-none cursor-pointer underline hover:opacity-70 transition-opacity duration-150 ease-in-out" onclick={async (e) => { e.stopPropagation(); if (!hasProjects) { step++; } else { await completeOnboarding(); goto('/app'); } }}>
+					<button class="font-bricolage text-base font-semibold text-black opacity-40 bg-transparent border-none cursor-pointer underline hover:opacity-70 transition-opacity duration-150 ease-in-out" onclick={async (e) => { e.stopPropagation(); if (!hasProjects) { step++; } else { await completeOnboarding(); goto('/app?post-onboarding'); } }}>
 						Skip
 					</button>
 					{#if selectedEvent}
