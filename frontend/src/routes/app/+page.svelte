@@ -2,7 +2,6 @@
 	import CircleIn from '$lib/components/anim/CircleIn.svelte';
 	import TextWave from '$lib/components/TextWave.svelte';
 	import logoSvg from '$lib/assets/Logo.svg';
-	import nexusLogo from '$lib/assets/onboarding/nexus-logo-constrained.svg';
 	import communitySvg from '$lib/assets/home/community.svg';
 
 	import { page } from '$app/state';
@@ -11,7 +10,11 @@
 	import { createGridNav } from '$lib/nav/wasd.svelte';
 	import { EXIT_DURATION } from '$lib';
 	import { api } from '$lib/api';
+	import { userStore } from '$lib/store/userCache';
 	import { onMount } from 'svelte';
+	import yaml from 'js-yaml';
+	import type { EventConfig } from '$lib/events/types';
+	import eventsRaw from '$lib/events/events.yaml?raw';
 
 	const phrases = [
 		"OH YEAH. IT'S ALL COMING TOGETHER.",
@@ -24,30 +27,52 @@
 	let disableAnimations = false;
 	let hideCirc = $state(page.url.searchParams.has('noanimate') || disableAnimations);
 
-	let userName = $state('');
+	// Post-onboarding popovers
+	let postOnboarding = $state(page.url.searchParams.has('post-onboarding'));
+
+	const cardDescriptions: Record<string, string> = {
+		'0-0': 'Create projects, track your progress, and submit them for review!',
+		'0-1': 'Check out upcoming Horizons events!',
+		'1-0': 'Spend your approved hours on rewards!',
+		'2-0': 'See what the community is up to!',
+		'3-0': 'Got questions? Find answers here.',
+	};
+
+	let userName = $derived($userStore.userName);
+	let referralCode = $derived($userStore.referralCode);
+	const eventsMap = yaml.load(eventsRaw) as Record<string, EventConfig>;
+	let pinnedEventConfig = $state<EventConfig | null>(null);
+	let pinnedEventSlug = $state<string | null>(null);
+
 	let approvedHours = $state(0);
 	let completedHours = $state(0);
 	const TARGET_HOURS = 30;
 
-	let remainingHours = $derived(Math.max(0, TARGET_HOURS - completedHours));
+	let remainingHours = $derived(Math.round(Math.max(0, TARGET_HOURS - completedHours) * 10) / 10);
 	let approvedPct = $derived(TARGET_HOURS > 0 ? Math.min(100, (approvedHours / TARGET_HOURS) * 100) : 0);
 	let completedPct = $derived(TARGET_HOURS > 0 ? Math.min(100, ((completedHours - approvedHours) / TARGET_HOURS) * 100) : 0);
 
 	onMount(async () => {
-		const [userRes, totalRes, approvedRes] = await Promise.all([
-			api.GET('/api/user/auth/me') as Promise<{ data?: Record<string, any> }>,
+		const [, totalRes, approvedRes] = await Promise.all([
+			userStore.load(),
 			api.GET('/api/hackatime/hours/total'),
 			api.GET('/api/hackatime/hours/approved'),
 		]);
 
-		if (userRes.data?.firstName) {
-			userName = (userRes.data.firstName as string).toLowerCase();
-		}
 		if (totalRes.data) {
 			completedHours = Math.round(((totalRes.data as any).totalNowHackatimeHours ?? 0) * 10) / 10;
 		}
 		if (approvedRes.data) {
 			approvedHours = Math.round(((approvedRes.data as any).totalApprovedHours ?? 0) * 10) / 10;
+		}
+
+		const pinnedRes = await api.GET('/api/events/auth/pinned-event' as any, {}).catch(() => null);
+		if (pinnedRes?.data) {
+			const slug = (pinnedRes.data as any).event?.slug;
+			if (slug && eventsMap[slug]) {
+				pinnedEventSlug = slug;
+				pinnedEventConfig = eventsMap[slug];
+			}
 		}
 	});
 
@@ -80,9 +105,11 @@
 	}
 
 	let navigating = $state(false);
+	let exitRight = $state(false);
 
-	async function navigateTo(href: string) {
+	async function navigateTo(href: string, opts: { exitRight?: boolean } = {}) {
 		navigating = true;
+		if (opts.exitRight) exitRight = true;
 		await new Promise(resolve => setTimeout(resolve, EXIT_DURATION + 350));
 		goto(href);
 	}
@@ -137,7 +164,7 @@
 <div class="page-wrap">
 	<div class="page-content">
 		<!-- Header -->
-		<div class="flex items-end gap-2 w-full shrink-0 exit-up enter-up" class:exiting={navigating}>
+		<div class="flex items-end gap-2 w-full shrink-0 exit-up enter-up" class:exiting={navigating} class:exit-right={exitRight} style:--exit-right-delay="0ms">
 			<div class="w-[347.58px] h-[75.13px] shrink-0">
 				<img src={logoSvg} alt="Horizon" class="w-full h-full block" />
 			</div>
@@ -152,7 +179,7 @@
 				<!-- Left Column: Projects (top) + Events (bottom) -->
 				<div class="left-col shrink-0" bind:this={cardRefs[0]}>
 					<!-- Projects -->
-					<div class="enter-up flex-1" class:exiting={navigating} style:--exit-delay="0ms" style:--enter-delay="50ms">
+					<div class="enter-up flex-1" class:exiting={navigating} class:exit-right={exitRight} style:--exit-delay="0ms" style:--enter-delay="50ms" style:--exit-right-delay="150ms">
 						<a href="/app/projects" class="card nav-card projects-card"
 							class:selected={nav.isSelected(0, 0)}
 							onmouseenter={() => { if (!nav.usingKeyboard) nav.select(0, 0); }}
@@ -171,11 +198,16 @@
 									CREATE AND SHIP YOUR PROJECTS
 								</p>
 							</div>
+							{#if postOnboarding && nav.isSelected(0, 0)}
+								<div class="card-popover">
+									<p class="font-bricolage text-[16px] font-semibold text-black/70 m-0">{cardDescriptions['0-0']}</p>
+								</div>
+							{/if}
 						</a>
 					</div>
 
 					<!-- Events -->
-					<div class="enter-down flex-1" class:exiting={navigating} style:--exit-delay="30ms" style:--enter-delay="100ms">
+					<div class="enter-down flex-1" class:exiting={navigating} class:exit-right={exitRight} style:--exit-delay="30ms" style:--enter-delay="100ms" style:--exit-right-delay="150ms">
 						<a href="/app/events" class="card nav-card events-half-card"
 							class:selected={nav.isSelected(0, 1)}
 							class:disabled={isDisabled(0, 1)}
@@ -195,6 +227,11 @@
 									CHECK OUT HORIZONS EVENTS!
 								</p>
 							</div>
+							{#if postOnboarding && nav.isSelected(0, 1)}
+								<div class="card-popover">
+									<p class="font-bricolage text-[16px] font-semibold text-black/70 m-0">{cardDescriptions['0-1']}</p>
+								</div>
+							{/if}
 						</a>
 					</div>
 				</div>
@@ -202,32 +239,34 @@
 				<!-- Middle Column -->
 				<div class="middle-col shrink-0">
 					<!-- Event / Nexus Card (informational, not navigable) -->
-					<div class="enter-up" class:exiting={navigating} style:--exit-delay="30ms" style:--enter-delay="100ms">
-						<div class="card event-card relative">
+					<div class="enter-up" class:exiting={navigating} class:exit-right={exitRight} style:--exit-delay="30ms" style:--enter-delay="100ms" style:--exit-right-delay="150ms">
+						<div class="card event-card relative" style="background-color: {pinnedEventSlug === 'nexus' || !pinnedEventConfig ? '#fac393' : pinnedEventConfig.colors.primary};">
 							<p class="absolute top-4 right-5 font-cook text-[24px] font-semibold text-black m-0">PROGRESS</p>
 							<div class="flex flex-col gap-3 w-full">
-								<img src={nexusLogo} alt="Horizon Nexus" class="h-[68px] w-auto object-contain object-left" />
+								<img src={pinnedEventConfig?.logo ?? '/logos/nexus-logo-constrained.svg'} alt={pinnedEventConfig?.name ?? 'Horizons'} class="h-[68px] w-auto object-contain object-left" />
 								<div class="card progress-card">
 									<div class="progress-bar">
 										{#if approvedPct > 0}
-											<div class="progress-segment bg-[#ffa936]" style="width: {approvedPct}%;">
+											<div class="progress-segment" style="width: {approvedPct}%; background-color: {pinnedEventConfig?.colors.primary ?? '#ffa936'};">
 												<span class="progress-label">{approvedHours} HOURS APPROVED</span>
 											</div>
 										{/if}
 										{#if completedPct > 0}
-											<div class="progress-segment bg-[#f86d95]" style="width: {completedPct}%;">
+											<div class="progress-segment" style="width: {completedPct}%; background-color: {pinnedEventConfig?.colors.secondary ?? '#f86d95'};">
 												<span class="progress-label">{completedHours - approvedHours} HOURS COMPLETED</span>
 											</div>
 										{/if}
-										<div class="bg-[#46467c] flex-1"></div>
+										<div class="flex-1" style="background-color: {pinnedEventConfig?.colors.tertiary ?? '#46467c'};"></div>
 									</div>
-									<p class="font-bricolage text-[16px] font-semibold text-black m-0 text-left">
-										{#if remainingHours > 0}
-											{remainingHours} HOURS TO GO!
-										{:else}
-											GOAL REACHED!
-										{/if}
-									</p>
+									{#if pinnedEventSlug === 'nexus'}
+										<p class="font-bricolage text-[16px] font-semibold text-black m-0 text-left">
+											{#if remainingHours > 0}
+												{postOnboarding ? `WORK ${remainingHours} HOURS TO GET YOUR TICKET TO THE EVENT!` : `${remainingHours} HOURS TO GO`}
+											{:else}
+												GOAL REACHED!
+											{/if}
+										</p>
+									{/if}
 								</div>
 							</div>
 						</div>
@@ -236,7 +275,7 @@
 					<!-- Shop + Events Row -->
 					<div class="bottom-row">
 						<!-- Shop -->
-						<div class="enter-down flex-1" class:exiting={navigating} style:--exit-delay="60ms" style:--enter-delay="150ms">
+						<div class="enter-down flex-1" class:exiting={navigating} class:exit-right={exitRight} style:--exit-delay="60ms" style:--enter-delay="150ms" style:--exit-right-delay="150ms">
 							<a bind:this={cardRefs[2]} href="/app/shop" class="card nav-card shop-card"
 								class:selected={nav.isSelected(1, 0)}
 								onmouseenter={() => { if (!nav.usingKeyboard) nav.select(1, 0); }}
@@ -253,11 +292,16 @@
 										BUY STUFF FOR YOURSELF!
 									</p>
 								</div>
+								{#if postOnboarding && nav.isSelected(1, 0)}
+									<div class="card-popover">
+										<p class="font-bricolage text-[16px] font-semibold text-black/70 m-0">{cardDescriptions['1-0']}</p>
+									</div>
+								{/if}
 							</a>
 						</div>
 
 						<!-- Community -->
-						<div class="enter-down flex-1" class:exiting={navigating} style:--exit-delay="90ms" style:--enter-delay="200ms">
+						<div class="enter-down flex-1" class:exiting={navigating} class:exit-right={exitRight} style:--exit-delay="90ms" style:--enter-delay="200ms" style:--exit-right-delay="150ms">
 							<a bind:this={cardRefs[3]} href="/app/community" class="card nav-card community-card"
 								class:selected={nav.isSelected(2, 0)}
 								onmouseenter={() => { if (!nav.usingKeyboard) nav.select(2, 0); }}
@@ -271,13 +315,18 @@
 										SEE WHAT'S HAPPENING!
 									</p>
 								</div>
+								{#if postOnboarding && nav.isSelected(2, 0)}
+									<div class="card-popover">
+										<p class="font-bricolage text-[16px] font-semibold text-black/70 m-0">{cardDescriptions['2-0']}</p>
+									</div>
+								{/if}
 							</a>
 						</div>
 					</div>
 				</div>
 
 				<!-- FAQ (tall right card) -->
-				<div class="enter-up shrink-0" class:exiting={navigating} style:--exit-delay="120ms" style:--enter-delay="250ms">
+				<div class="enter-up shrink-0" class:exiting={navigating} class:exit-right={exitRight} style:--exit-delay="120ms" style:--enter-delay="250ms" style:--exit-right-delay="150ms">
 					<a bind:this={cardRefs[4]} href="/faq?from=app" class="card nav-card faq-card"
 						class:selected={nav.isSelected(3, 0)}
 						class:shaking={isShaking(3, 0)}
@@ -295,13 +344,18 @@
 								NEED HELP?
 							</p>
 						</div>
+						{#if postOnboarding && nav.isSelected(3, 0)}
+							<div class="card-popover">
+								<p class="font-bricolage text-[16px] font-semibold text-black/70 m-0">{cardDescriptions['3-0']}</p>
+							</div>
+						{/if}
 					</a>
 				</div>
 				</div>
 		</div>
 
 		<!-- Bottom Info Row -->
-		<div class="info-row enter-down" class:exiting={navigating} style:--exit-delay="0ms" style:--enter-delay="300ms">
+		<div class="info-row enter-down" class:exiting={navigating && !exitRight} style:--exit-delay="0ms" style:--enter-delay="300ms">
 			<div class="card nav-hint-card">
 				<div class="flex items-center gap-5">
 					<p class="font-cook text-[24px] font-semibold text-black m-0 shrink-0 leading-none">USE</p>
@@ -315,6 +369,14 @@
 			{#if userName}
 				<div class="card user-card">
 					<p class="font-cook text-[24px] font-semibold text-black m-0">{userName}</p>
+					{#if referralCode}
+						<button
+							class="refer-btn py-2 px-4 border-2 border-black rounded-lg bg-[#ffa936] font-bricolage text-base font-semibold text-black cursor-pointer"
+							onclick={() => navigateTo('/app/refer?back', { exitRight: true })}
+						>
+							Refer a Friend
+						</button>
+					{/if}
 					<button class="logout-btn" onclick={async () => { await api.POST('/api/user/auth/logout'); window.location.href = '/'; }} aria-label="Logout">
 						<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 							<path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -542,6 +604,21 @@
 		padding: 20px;
 		background-color: #f3e8d8;
 		cursor: default;
+		overflow: visible;
+	}
+
+	.refer-btn {
+		transition:
+			background-color var(--selected-duration) ease,
+			transform var(--juice-duration) var(--juice-easing);
+		animation: white-blink 1.5s ease-in-out infinite;
+	}
+	@keyframes white-blink {
+		0%, 100% { background-color: #fdd9a8; }
+		50% { background-color: #fba74d; }
+	}
+	.refer-btn:hover {
+		transform: scale(var(--juice-scale));
 	}
 
 	.logout-btn {
@@ -609,6 +686,11 @@
 		animation: fly-out-bottom var(--exit-duration) var(--exit-easing) var(--exit-delay, 0ms) both;
 	}
 
+	/* Override: all cards fly out to the right with stagger */
+	.exit-right.exiting {
+		animation: fly-out-right var(--exit-duration) var(--exit-easing) var(--exit-right-delay, 0ms) both;
+	}
+
 	@keyframes shake {
 		0%, 100% { translate: 0 0; }
 		20%       { translate: -8px 0; }
@@ -619,5 +701,19 @@
 
 	.card.shaking {
 		animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+	}
+
+	/* Post-onboarding popover */
+	.card-popover {
+		position: absolute;
+		bottom: 12px;
+		left: 12px;
+		right: 12px;
+		z-index: 20;
+		background: #f3e8d8;
+		border: 3px solid black;
+		border-radius: 12px;
+		box-shadow: 3px 3px 0px 0px black;
+		padding: 12px 16px;
 	}
 </style>
