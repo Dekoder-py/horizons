@@ -4,6 +4,7 @@ import {
   Put,
   Body,
   Param,
+  Query,
   UseGuards,
   Req,
   ParseIntPipe,
@@ -34,12 +35,15 @@ import {
   SlackLookupResponse,
   PriorityUserResponse,
   GlobalSettingsResponse,
+  ElevatedUserResponse,
+  UpdateUserRoleResponse,
 } from './dto/admin-response.dto';
 import {
   ToggleFraudFlagDto,
   ToggleSusFlagDto,
   UpdateSlackIdDto,
   ToggleSubmissionsFrozenDto,
+  UpdateUserRoleDto,
 } from './dto/admin-request.dto';
 
 @Controller('api/admin')
@@ -233,5 +237,33 @@ export class AdminController {
       body.submissionsFrozen,
       req.user.userId,
     );
+  }
+
+  @Get('users/search')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Superadmin)
+  @ApiOkResponse({ type: [ElevatedUserResponse] })
+  async searchUsers(@Query('q') query: string) {
+    return this.adminService.searchUsers(query);
+  }
+
+  @Get('elevated-users')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Superadmin)
+  @ApiOkResponse({ type: [ElevatedUserResponse] })
+  async getElevatedUsers() {
+    return this.adminService.getElevatedUsers();
+  }
+
+  @Put('users/:id/role')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Superadmin)
+  @ApiOkResponse({ type: UpdateUserRoleResponse })
+  async updateUserRole(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateUserRoleDto,
+    @Req() req: Request,
+  ) {
+    return this.adminService.updateUserRole(id, body.role, req.user.userId);
   }
 }
